@@ -5,7 +5,7 @@ Herramientas personalizadas para CrewAI
 import json
 import asyncio
 from typing import Dict, Any
-from crewai_tools import tool
+from crewai.tools import tool
 
 from app.services.classification_service import classification_model
 

@@ -11,7 +11,7 @@ from datetime import datetime
 import uuid
 
 from app.core.config import settings
-from app.crew.tools import classify_medical_data, json_validator, medical_data_formatter
+from app.crew.tools import classify_medical_data, validate_json_structure, format_medical_data_for_classification
 from app.crew.llm_config import get_nemotron_llm, configure_crewai_llm
 import os
 
@@ -96,7 +96,7 @@ class AnamnesisConversacionalCrew:
             verbose=True,
             allow_delegation=False,
             max_execution_time=300,  # 5 minutos máximo (incluye tiempo de clasificación)
-            tools=[classify_medical_data, json_validator, medical_data_formatter]  # Herramientas para comunicarse con el modelo HF
+            tools=[classify_medical_data, validate_json_structure, format_medical_data_for_classification]  # Herramientas para comunicarse con el modelo HF
         )
 
     @task

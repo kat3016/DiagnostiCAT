@@ -9,6 +9,7 @@ from datetime import datetime
 import re
 
 from app.models.medical_models import MessageModel, MessageRole, ChatResponse, ChatRequest
+from app.crew.anamnesis_crew import AnamnesisConversacionalCrew
 
 router = APIRouter()
 
@@ -40,7 +41,7 @@ async def chat_with_agent(request: ChatRequest):
             "interview_data": {},
             "symptoms_collected": [],
             "questions_asked": 0,
-            "min_questions": 3,  # Mínimo de preguntas antes de clasificar
+            "min_questions": 7,  # Hacer las 7 preguntas completas
             "max_questions": 7,  # Máximo de preguntas
             "created_at": datetime.now()
         }
@@ -51,6 +52,12 @@ async def chat_with_agent(request: ChatRequest):
     
     conversation = CONVERSATIONS[conversation_id]
     user_message = request.message.lower().strip()
+    
+    # 🔧 Limpiar conversaciones con configuración anterior (una sola vez al servidor iniciar)
+    if conversation.get("min_questions", 3) == 3:
+        print(f"🔧 Clearing old conversations and resetting")
+        CONVERSATIONS.clear()
+        raise HTTPException(status_code=404, detail="Conversación reiniciada - por favor inicie una nueva")
     
     # Debug: Imprimir estado de la conversación
     print(f"🔍 DEBUG: Conversation state: {conversation['state']}")
@@ -98,7 +105,7 @@ async def chat_with_agent(request: ChatRequest):
             agent_type="error_handler",
             confidence_score=0.0,
             severity_assessment="BAJO",
-            suggestions=["Reiniciar la conversación", "Verificar conexión"],
+            suggestions=[],
             follow_up_questions=[]
         )
         
@@ -166,12 +173,8 @@ async def handle_consent(conversation_id: str, user_message_lower: str, original
             agent_type="consent_handler",
             confidence_score=1.0,
             severity_assessment="BAJO",
-            suggestions=["Describir síntomas principales", "Mencionar duración de los síntomas", "Indicar nivel de dolor si aplica"],
-            follow_up_questions=[
-                "¿Cuáles son sus síntomas principales?",
-                "¿Cuándo comenzaron estos síntomas?",
-                "¿Ha tomado algún medicamento?"
-            ]
+            suggestions=[],
+            follow_up_questions=[]
         )
     
     elif consent_denied:
@@ -190,7 +193,7 @@ async def handle_consent(conversation_id: str, user_message_lower: str, original
             agent_type="consent_handler",
             confidence_score=1.0,
             severity_assessment="BAJO",
-            suggestions=["Reiniciar conversación si cambia de opinión"],
+            suggestions=[],
             follow_up_questions=[]
         )
     
@@ -210,8 +213,8 @@ async def handle_consent(conversation_id: str, user_message_lower: str, original
             agent_type="consent_handler",
             confidence_score=0.5,
             severity_assessment="BAJO",
-            suggestions=["Responder 'sí acepto'", "Responder 'no acepto'"],
-            follow_up_questions=["¿Acepta el procesamiento de su información médica?"]
+            suggestions=[],
+            follow_up_questions=[]
         )
 
 
@@ -237,16 +240,8 @@ async def handle_medical_conversation(conversation_id: str, message: str) -> Cha
             agent_type="medical_interviewer",
             confidence_score=0.7,
             severity_assessment="MEDIO",
-            suggestions=[
-                "Proporcionar más detalles sobre los síntomas",
-                "Mencionar la duración exacta",
-                "Indicar cualquier medicamento que esté tomando"
-            ],
-            follow_up_questions=[
-                "¿Puede describir más detalladamente el síntoma?",
-                "¿Ha notado algún patrón en cuanto al momento del día?",
-                "¿Hay algo que mejore o empeore los síntomas?"
-            ]
+            suggestions=[],
+            follow_up_questions=[]
         )
         
     except Exception as e:
@@ -283,17 +278,16 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     print(f"🔍 DEBUG: Symptoms collected: {conversation['symptoms_collected']}")
     print(f"🔍 DEBUG: Current message: {message}")
     
-    # Determinar si tenemos suficiente información para pasar a preguntas específicas
-    if (conversation["questions_asked"] >= conversation["min_questions"] and 
-        len(conversation["symptoms_collected"]) >= 2) or \
-       conversation["questions_asked"] >= conversation["max_questions"]:
+    # Determinar si hemos completado las 7 preguntas generales
+    if conversation["questions_asked"] >= conversation["max_questions"]:
         
         print(f"🔍 DEBUG: Moving to specific questions phase")
-        # Cambiar estado y proceder con preguntas específicas
+        # Cambiar estado y proceder con preguntas específicas adaptativas
         conversation["state"] = ConversationState.SPECIFIC_QUESTIONS
         conversation["specific_questions_asked"] = 0
         conversation["specific_questions_max"] = 5  # Máximo 5 preguntas específicas
         conversation["specific_answers"] = []
+        conversation["adaptive_context"] = []  # Para guardar contexto de respuestas
         return await handle_specific_questions(conversation_id, message)
     
     # Generar siguiente pregunta
@@ -318,47 +312,214 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     )
 
 
-async def handle_specific_questions(conversation_id: str, message: str) -> ChatResponse:
-    """Maneja las preguntas específicas del specific_questions_analyst"""
+def format_interview_data_for_agent(symptoms_data: Dict[str, Any]) -> str:
+    """Formatea los datos de la entrevista para el agente de CrewAI"""
+    interview_text = "ENTREVISTA CONVERSACIONAL COMPLETADA:\n"
+    
+    for i, (question, answer) in enumerate(symptoms_data.items(), 1):
+        if question in ["motivo_consulta", "inicio_sintomas", "intensidad", "antecedentes_medicos", 
+                       "medicamentos_actuales", "antecedentes_familiares", "habitos_relevantes"]:
+            interview_text += f"{i}. {question.replace('_', ' ').title()}: {answer}\n"
+    
+    return interview_text
+
+
+def parse_agent_analysis(analysis_result: str) -> tuple[List[str], List[str]]:
+    """Parsea el resultado del agente para extraer hipótesis y preguntas"""
+    print(f"🔍 INICIO PARSEO DEL AGENTE:")
+    print(f"📄 Contenido completo:\n{analysis_result}")
+    print(f"🔍" + "="*50)
+    
+    try:
+        # Buscar hipótesis preliminares
+        hypotheses = []
+        questions = []
+        
+        lines = analysis_result.split('\n')
+        in_hypotheses_section = False
+        in_questions_section = False
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            print(f"📝 Línea {i}: '{line}'")
+            
+            # Buscar secciones con más variaciones
+            if any(keyword in line.upper() for keyword in ["HIPÓTESIS", "HIPOTESIS", "HYPOTHESES", "PRELIMINAR"]):
+                in_hypotheses_section = True
+                in_questions_section = False
+                print(f"🎯 Encontrada sección de hipótesis en línea {i}")
+                continue
+            
+            if any(keyword in line.upper() for keyword in ["PREGUNTAS", "QUESTIONS", "ESPECÍFICAS", "ESPECIFICAS", "CLASIFICACIÓN", "CLASIFICACION"]):
+                in_hypotheses_section = False
+                in_questions_section = True
+                print(f"❓ Encontrada sección de preguntas en línea {i}")
+                continue
+            
+            # Extraer hipótesis (buscar patrones numerados)
+            if in_hypotheses_section and line:
+                if line.startswith(("1.", "2.", "3.", "•", "-", "*")) or line[0].isdigit():
+                    hypothesis = line[2:].strip() if line.startswith(("1.", "2.", "3.")) else line.strip()
+                    hypotheses.append(hypothesis)
+                    print(f"✅ Hipótesis extraída: '{hypothesis}'")
+            
+            # Extraer preguntas
+            if in_questions_section and line:
+                if line.startswith(("1.", "2.", "3.", "4.", "5.", "•", "-", "*")) or line[0].isdigit():
+                    question = line[2:].strip() if line[0].isdigit() and line[1] == '.' else line.strip()
+                    if question.endswith('?') or any(word in question.lower() for word in ['qué', 'cómo', 'cuándo', 'dónde', 'por qué', 'puede']):
+                        questions.append(question)
+                        print(f"❓ Pregunta extraída: '{question}'")
+        
+        print(f"📊 RESULTADO PARSEO:")
+        print(f"🎯 Hipótesis encontradas: {len(hypotheses)} - {hypotheses}")
+        print(f"❓ Preguntas encontradas: {len(questions)} - {questions}")
+        
+        # Solo usar fallback si NO se encontraron resultados del agente
+        if len(hypotheses) == 0:
+            print("⚠️  No se encontraron hipótesis, usando fallback")
+            hypotheses = [
+                "El agente no pudo generar hipótesis específicas",
+                "Se requiere más información para el análisis",
+                "Consulta médica presencial recomendada"
+            ]
+        
+        if len(questions) == 0:
+            print("⚠️  No se encontraron preguntas, FALLO DEL AGENTE")
+            questions = [
+                "El agente no pudo generar preguntas específicas. ¿Puede proporcionar más detalles?",
+                "¿Hay algo más que considere importante mencionar sobre sus síntomas?",
+                "¿Qué información adicional cree que sería útil para su evaluación?",
+                "¿Ha experimentado síntomas similares anteriormente?",
+                "¿Hay algún factor que haya notado que mejore o empeore su condición?"
+            ]
+        
+        # Asegurar exactamente 3 hipótesis y 5 preguntas
+        return hypotheses[:3], questions[:5]
+        
+    except Exception as e:
+        print(f"❌ ERROR CRÍTICO en parseo: {e}")
+        print(f"📄 Contenido que causó error:\n{analysis_result}")
+        # Solo en caso de error crítico
+        return [
+            "Error en el procesamiento del agente",
+            "Se requiere reinicio del análisis", 
+            "Consulta técnica pendiente"
+        ], [
+            "¿Puede reintentar describir sus síntomas?",
+            "¿Hay algún detalle adicional que pueda proporcionar?",
+            "¿Considera que falta información importante?",
+            "¿Puede especificar más sobre su condición actual?",
+            "¿Qué aspectos considera más relevantes de su caso?"
+        ]
+
+
+def format_hypotheses_display(hypotheses: List[str]) -> str:
+    """Formatea las hipótesis para mostrar al usuario"""
+    formatted = ""
+    for i, hypothesis in enumerate(hypotheses, 1):
+        formatted += f"{i}. {hypothesis}\n"
+    return formatted.strip()
+
+
+async def handle_specific_questions_fallback(conversation_id: str, message: str) -> ChatResponse:
+    """Función de respaldo si el agente de CrewAI falla"""
     conversation = CONVERSATIONS[conversation_id]
     
-    # Si es la primera vez en esta fase, generar hipótesis y primera pregunta específica
+    # Usar lógica simple de respaldo
+    fallback_hypotheses = [
+        "Posible condición inflamatoria basada en síntomas reportados",
+        "Síndrome relacionado con factores de estilo de vida",
+        "Condición que requiere evaluación médica especializada"
+    ]
+    
+    fallback_questions = [
+        "¿Puede describir la intensidad de sus síntomas en una escala del 1 al 10?",
+        "¿Los síntomas son constantes o van y vienen?",
+        "¿Ha notado si algo específico desencadena o alivia sus síntomas?",
+        "¿Tiene algún historial familiar de condiciones similares?",
+        "¿Está tomando algún medicamento o suplemento actualmente?"
+    ]
+    
+    conversation["preliminary_hypotheses"] = fallback_hypotheses
+    conversation["specific_questions_list"] = fallback_questions
+    conversation["specific_questions_max"] = 5
+    conversation["specific_questions_asked"] = 1
+    
+    response_text = f"✅ **PREGUNTAS GENERALES COMPLETADAS**\n\nHe completado las preguntas generales. Ahora procederé con preguntas específicas:\n\n🎯 **Pregunta específica 1/5:**\n{fallback_questions[0]}"
+    
+    return ChatResponse(
+        response=response_text,
+        conversation_id=conversation_id,
+        agent_type="specific_questions_analyst",
+        confidence_score=0.8,
+        severity_assessment="MEDIO",
+        suggestions=[],
+        follow_up_questions=[]
+    )
+
+
+async def handle_specific_questions(conversation_id: str, message: str) -> ChatResponse:
+    """Maneja las preguntas específicas usando el agente specific_questions_analyst de CrewAI"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    # Si es la primera vez en esta fase, usar el agente de CrewAI para generar análisis y preguntas
     if conversation["specific_questions_asked"] == 0:
-        print(f"🔍 DEBUG: Starting specific questions phase")
+        print(f"🔍 DEBUG: Starting specific questions phase with CrewAI agent")
         
-        # Generar hipótesis preliminares basadas en síntomas recopilados
-        hypotheses = generate_preliminary_hypotheses(conversation["symptoms_collected"])
-        conversation["preliminary_hypotheses"] = hypotheses
-        
-        # Generar primera pregunta específica
-        specific_question = generate_specific_question(
-            conversation["symptoms_collected"], 
-            hypotheses, 
-            conversation["specific_questions_asked"]
-        )
-        
-        conversation["specific_questions_asked"] += 1
-        
-        response_text = f"✅ **ANÁLISIS INICIAL COMPLETADO**\n\nGracias por la información inicial. He identificado algunas hipótesis preliminares y ahora necesito hacer preguntas más específicas para un diagnóstico más preciso.\n\n🎯 **Pregunta específica {conversation['specific_questions_asked']}/5:**\n{specific_question}"
-        
-        conversation["messages"].append({
-            "role": MessageRole.ASSISTANT,
-            "content": response_text,
-            "timestamp": datetime.now()
-        })
-        
-        return ChatResponse(
-            response=response_text,
-            conversation_id=conversation_id,
-            agent_type="specific_questions_analyst",
-            confidence_score=0.9,
-            severity_assessment="MEDIO",
-            suggestions=[],
-            follow_up_questions=[]
-        )
+        try:
+            # Preparar datos de la entrevista inicial para el agente
+            interview_summary = format_interview_data_for_agent(conversation["symptoms_collected"])
+            
+            # Crear instancia del crew y ejecutar análisis de preguntas específicas
+            crew = AnamnesisConversacionalCrew()
+            
+            # Ejecutar el análisis usando el método run_analysis_only
+            analysis_result = crew.run_analysis_only({"interview_data": interview_summary})
+            
+            # 🐛 DEBUG: Ver qué devuelve realmente el agente
+            print(f"🤖 AGENTE RESULTADO CRUDO:")
+            print(f"📝 {analysis_result}")
+            print(f"📝 Tipo: {type(analysis_result)}")
+            print(f"🔍" + "="*80)
+            
+            # Parsear el resultado del agente
+            hypotheses, questions = parse_agent_analysis(analysis_result)
+            
+            # Guardar hipótesis y preguntas en la conversación
+            conversation["preliminary_hypotheses"] = hypotheses
+            conversation["specific_questions_list"] = questions
+            conversation["specific_questions_max"] = len(questions)
+            
+            # Tomar la primera pregunta
+            current_question = questions[0] if questions else "¿Puede describir más detalles sobre sus síntomas?"
+            conversation["specific_questions_asked"] = 1
+            
+            response_text = f"✅ **PREGUNTAS GENERALES COMPLETADAS**\n\nExcelente, he completado las preguntas generales y analizado su información inicial.\n\n**HIPÓTESIS PRELIMINARES:**\n{format_hypotheses_display(hypotheses)}\n\nAhora procederé con 5 preguntas específicas diseñadas por nuestro agente especializado:\n\n🎯 **Pregunta específica 1/5:**\n{current_question}"
+            
+            conversation["messages"].append({
+                "role": MessageRole.ASSISTANT,
+                "content": response_text,
+                "timestamp": datetime.now()
+            })
+            
+            return ChatResponse(
+                response=response_text,
+                conversation_id=conversation_id,
+                agent_type="specific_questions_analyst",
+                confidence_score=0.9,
+                severity_assessment="MEDIO",
+                suggestions=[],
+                follow_up_questions=[]
+            )
+            
+        except Exception as e:
+            print(f"❌ ERROR: CrewAI agent failed: {e}")
+            # Fallback a lógica simple si el agente falla
+            return await handle_specific_questions_fallback(conversation_id, message)
     
     else:
-        # Procesar respuesta y generar siguiente pregunta o proceder a clasificación
+        # Procesar respuesta y tomar siguiente pregunta de la lista generada por el agente
         conversation["specific_answers"].append({
             "question_number": conversation["specific_questions_asked"],
             "answer": message
@@ -366,22 +527,19 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
         
         print(f"🔍 DEBUG: Specific questions asked: {conversation['specific_questions_asked']}/{conversation['specific_questions_max']}")
         
-        # Verificar si ya tenemos suficientes respuestas específicas
+        # Verificar si hemos completado todas las preguntas específicas
         if conversation["specific_questions_asked"] >= conversation["specific_questions_max"]:
-            print(f"🔍 DEBUG: Moving to final classification phase")
+            print(f"🔍 DEBUG: Completed all specific questions, moving to classification")
             conversation["state"] = ConversationState.READY_FOR_CLASSIFICATION
             return await handle_classification(conversation_id, message)
         
-        # Generar siguiente pregunta específica
-        specific_question = generate_specific_question(
-            conversation["symptoms_collected"], 
-            conversation["preliminary_hypotheses"], 
-            conversation["specific_questions_asked"]
-        )
+        # Tomar siguiente pregunta de la lista generada por el agente
+        next_question_index = conversation["specific_questions_asked"]
+        current_question = conversation["specific_questions_list"][next_question_index]
         
         conversation["specific_questions_asked"] += 1
         
-        response_text = f"🎯 **Pregunta específica {conversation['specific_questions_asked']}/5:**\n{specific_question}"
+        response_text = f"🎯 **Pregunta específica {conversation['specific_questions_asked']}/5:**\n{current_question}"
         
         conversation["messages"].append({
             "role": MessageRole.ASSISTANT,
@@ -447,7 +605,7 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
             confidence_score=classification_result.get("confidence_score", 0.0),
             severity_assessment=classification_result.get("severity", "MEDIO"),
             predicted_condition=classification_result.get("predicted_condition", "Análisis completado"),
-            suggestions=classification_result.get("recommendations", []),
+            suggestions=[],  # Sin sugerencias
             follow_up_questions=[],  # Sin preguntas de seguimiento
             is_diagnosis=True  # Marcar como diagnóstico para mostrar el recuadro especial
         )
@@ -547,7 +705,7 @@ def generate_next_question(symptoms_collected: List[str], questions_asked: int) 
     base_questions = [
         "¿Cuándo comenzaron estos síntomas? ¿Hace horas, días o semanas?",
         "¿Cómo describiría la intensidad de sus síntomas en una escala del 1 al 10?",
-        "¿Hay algo que haga que los síntomas empeoren or mejoren?",
+        "¿Hay algo que haga que los síntomas empeoren o mejoren?",
         "¿Ha notado otros síntomas adicionales que puedan estar relacionados?",
         "¿Está tomando algún medicamento actualmente o ha tomado algo para estos síntomas?",
         "¿Ha tenido problemas similares en el pasado?",
@@ -696,26 +854,15 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
         }
     
     # Generar texto del diagnóstico
-    diagnosis_text = "🔍 **ANÁLISIS PRELIMINAR COMPLETADO**\n\n"
-    diagnosis_text += "Basándome en sus síntomas, estas son las **3 condiciones más probables**:\n\n"
+    diagnosis_text = "🏥 **DIAGNÓSTICO PRELIMINAR**\n\n"
+    diagnosis_text += "Basándome en toda la información recopilada, estas son las **3 condiciones más probables**:\n\n"
     
     for i, condition in enumerate(possible_conditions[:3], 1):
-        diagnosis_text += f"**{i}. {condition['name']}** ({condition['probability']})\n"
-        diagnosis_text += f"   • {condition['description']}\n\n"
+        diagnosis_text += f"**{i}. {condition['name']}** - {condition['probability']} de probabilidad\n"
+        diagnosis_text += f"   {condition['description']}\n\n"
     
-    diagnosis_text += "⚠️ **IMPORTANTE:**\n"
-    diagnosis_text += "• Este es un análisis preliminar basado en IA\n"
-    diagnosis_text += "• NO reemplaza el diagnóstico médico profesional\n"
-    diagnosis_text += "• Consulte a un médico para confirmación y tratamiento\n\n"
-    
-    # Agregar recomendaciones según severidad
-    severity = classification_result.get("severity", "MEDIO") if classification_result else "MEDIO"
-    if severity in ["CRÍTICO", "ALTO"]:
-        diagnosis_text += "🚨 **RECOMENDACIÓN:** Consulte a un médico INMEDIATAMENTE"
-    elif severity == "MEDIO":
-        diagnosis_text += "📋 **RECOMENDACIÓN:** Programe una cita médica en los próximos días"
-    else:
-        diagnosis_text += "💡 **RECOMENDACIÓN:** Monitoree síntomas y consulte si empeoran"
+    diagnosis_text += "⚠️ **AVISO MÉDICO IMPORTANTE:**\n"
+    diagnosis_text += "Este análisis es una orientación preliminar basada en inteligencia artificial. No sustituye la consulta médica profesional. Para un diagnóstico definitivo y tratamiento apropiado, consulte con un médico calificado."
     
     return diagnosis_text
 
@@ -830,3 +977,88 @@ def generate_specific_question(symptoms_collected: List[str], hypotheses: List[D
     
     # Retornar la pregunta correspondiente al número
     return questions[min(question_number - 1, len(questions) - 1)]
+
+
+def should_ask_more_questions(adaptive_context: List[str], questions_asked: int, hypotheses: List[Dict]) -> tuple[bool, str]:
+    """Determina si se necesitan más preguntas específicas basándose en el contexto"""
+    
+    # Si hemos hecho menos de 2 preguntas específicas, seguir preguntando
+    if questions_asked < 2:
+        return True, "Necesitamos información mínima"
+    
+    # Analizar si las respuestas han sido informativas
+    context_text = " ".join(adaptive_context)
+    
+    # Si las respuestas son muy cortas o poco informativas, seguir preguntando
+    if len(context_text) < 50 and questions_asked < 4:
+        return True, "Respuestas demasiado breves, necesitamos más detalles"
+    
+    # Si detectamos síntomas preocupantes, hacer más preguntas
+    concerning_symptoms = ['sangre', 'desmayo', 'pecho', 'respirar', 'corazón', 'vision', 'paralisis', 'entumecimiento']
+    if any(symptom in context_text for symptom in concerning_symptoms) and questions_asked < 4:
+        return True, "Síntomas que requieren más investigación detectados"
+    
+    # Si tenemos información suficiente y clara, proceder al diagnóstico
+    if questions_asked >= 3 and len(context_text) > 100:
+        return False, "Suficiente información recopilada para análisis"
+    
+    # Por defecto, hacer al menos 3 preguntas específicas
+    if questions_asked < 3:
+        return True, "Información básica específica requerida"
+    
+    return False, "Criterios de información completos"
+
+
+def generate_adaptive_question(symptoms: List[str], hypotheses: List[Dict], context: List[str], question_num: int) -> str:
+    """Genera preguntas específicas adaptativas basadas en respuestas anteriores"""
+    
+    # Obtener la categoría principal de la hipótesis
+    main_category = hypotheses[0]["category"] if hypotheses else "general"
+    context_text = " ".join(context).lower()
+    
+    # Preguntas adaptativas basadas en respuestas anteriores
+    if question_num == 1:
+        # Primera pregunta específica - siempre sobre localización/características
+        if main_category == "neurological":
+            return "¿El dolor de cabeza se localiza en un área específica (frente, sienes, nuca) o es generalizado por toda la cabeza?"
+        elif main_category == "respiratory":
+            return "¿La dificultad respiratoria o tos se presenta en reposo o solo durante actividad física?"
+        elif main_category == "cardiovascular":
+            return "¿Las palpitaciones o molestias en el pecho ocurren durante el reposo o al hacer esfuerzo?"
+        elif main_category == "musculoskeletal":
+            return "¿El dolor se presenta solo con el movimiento o también cuando está en reposo?"
+        else:
+            return "¿Podría describir con más detalle las características específicas de su síntoma principal?"
+    
+    elif question_num == 2:
+        # Segunda pregunta - adaptada a la primera respuesta
+        if "movimiento" in context_text or "actividad" in context_text:
+            return "¿Hay algún movimiento o posición específica que alivie o empeore significativamente los síntomas?"
+        elif "reposo" in context_text or "descanso" in context_text:
+            return "¿Los síntomas mejoran con el reposo o persisten incluso cuando no está haciendo nada?"
+        elif "localiza" in context_text or "área" in context_text:
+            return "¿Ha notado si el área afectada presenta hinchazón, enrojecimiento, calor o cambios visibles?"
+        else:
+            return "¿Ha notado algún patrón en cuanto a cuándo los síntomas son más intensos (hora del día, situaciones específicas)?"
+    
+    elif question_num == 3:
+        # Tercera pregunta - buscar síntomas acompañantes o factores agravantes
+        if any(word in context_text for word in ['dolor', 'molesta', 'duele']):
+            return "¿Experimenta otros síntomas junto con el dolor, como náuseas, mareos, cambios en la visión o sensibilidad?"
+        elif any(word in context_text for word in ['mejor', 'alivia', 'mejora']):
+            return "¿Ha probado algún tratamiento, medicamento o remedio casero? ¿Cuál ha sido el resultado?"
+        else:
+            return "¿Ha notado algo específico que desencadene o empeore estos síntomas (comida, estrés, clima, actividades)?"
+    
+    elif question_num == 4:
+        # Cuarta pregunta - antecedentes y contexto médico
+        if "medicamento" in context_text or "tratamiento" in context_text:
+            return "¿Tiene antecedentes familiares de condiciones similares o está tomando algún medicamento regularmente?"
+        elif any(word in context_text for word in ['estrés', 'trabajo', 'sueño']):
+            return "¿Ha habido cambios recientes en su rutina, nivel de estrés, alimentación o patrones de sueño?"
+        else:
+            return "¿Es la primera vez que experimenta estos síntomas o ha tenido episodios similares anteriormente?"
+    
+    else:
+        # Pregunta final - información adicional importante
+        return "¿Hay algún detalle adicional sobre sus síntomas que considere importante mencionar o que no hayamos cubierto?"
