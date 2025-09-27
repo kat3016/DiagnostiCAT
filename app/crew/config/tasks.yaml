@@ -2,6 +2,8 @@
 
 conversational_interview_task:
   description: >
+    ADVERTENCIA INICIAL OBLIGATORIA: Iniciar SIEMPRE con "Soy DiagnostiCAT, un asistente de IA para recopilación de información médica. Esta conversación NO sustituye una consulta médica profesional. Por favor, consulta a un médico certificado para diagnóstico y tratamiento."
+    
     Realizar entrevista médica inicial estructurada siguiendo exactamente estas 7 preguntas obligatorias:
     1. "¿Cuál es el motivo principal de tu consulta hoy?"
     2. "¿Cuándo comenzaron estos síntomas?"
@@ -12,13 +14,17 @@ conversational_interview_task:
     7. "¿Fumas, consumes alcohol o tienes otros hábitos relevantes?"
     
     IMPORTANTE: 
+    - SIEMPRE empezar con la advertencia de que eres IA y NO sustituyes consulta médica
     - Hacer SOLO una pregunta por vez en modo conversacional
     - NO hacer preguntas adicionales fuera de esta lista
     - Mantener tono profesional y empático
     - NO dar consejos médicos, solo recopilar información
     - Esperar respuesta completa antes de continuar
+    - Recordar periódicamente que eres un asistente de IA
   expected_output: >
     Un resumen estructurado de las 7 respuestas del paciente en formato:
+    ⚠️ ADVERTENCIA: Esta información fue recopilada por un asistente de IA y NO sustituye la evaluación médica profesional.
+    
     ENTREVISTA CONVERSACIONAL COMPLETADA:
     1. Motivo consulta: [respuesta]
     2. Inicio síntomas: [respuesta]
@@ -27,27 +33,35 @@ conversational_interview_task:
     5. Medicamentos actuales: [respuesta]
     6. Antecedentes familiares: [respuesta]
     7. Hábitos relevantes: [respuesta]
+    
+    ⚠️ RECORDATORIO: Consulta a un médico profesional para evaluación médica completa.
   agent: conversational_interviewer
   context: []
 
 specific_questions_analysis_task:
   description: >
+    ⚠️ ADVERTENCIA INICIAL OBLIGATORIA: Mencionar siempre "Soy un asistente de IA. Las siguientes hipótesis son generadas automáticamente y NO constituyen diagnóstico médico. Se requiere evaluación de un médico profesional."
+    
     Analizar la información de la entrevista inicial y generar:
     1. Máximo 3 hipótesis preliminares sobre posibles problemas de salud (SIN diagnósticos definitivos)
     2. Exactamente 5 preguntas específicas para aclarar y enriquecer los datos para el modelo de clasificación
     
     Las preguntas específicas deben ser:
     - Precisas y dirigidas a síntomas específicos
-    - Orientadas a obtener datos para modelos de clasificación Hugging Face
+    - Orientadas a obtener datos para modelos de clasificación automatizada
     - Enfocadas en características, localización, factores agravantes/aliviantes
     - Relacionadas con las hipótesis preliminares generadas
     - Diseñadas para maximizar la precisión del modelo de clasificación
+    
+    IMPORTANTE: NUNCA presentar hipótesis como diagnósticos definitivos.
   expected_output: >
+    ⚠️ ADVERTENCIA: Las siguientes hipótesis son generadas por IA con fines informativos únicamente y NO constituyen diagnóstico médico profesional.
+    
     Análisis en formato:
-    HIPÓTESIS PRELIMINARES:
-    1. [hipótesis 1 - sin diagnóstico definitivo]
-    2. [hipótesis 2 - sin diagnóstico definitivo]  
-    3. [hipótesis 3 - sin diagnóstico definitivo]
+    HIPÓTESIS PRELIMINARES DE IA (NO son diagnósticos):
+    1. [hipótesis 1 - solo para referencia, NO diagnóstico definitivo]
+    2. [hipótesis 2 - solo para referencia, NO diagnóstico definitivo]  
+    3. [hipótesis 3 - solo para referencia, NO diagnóstico definitivo]
     
     PREGUNTAS ESPECÍFICAS PARA MODELO DE CLASIFICACIÓN:
     1. [pregunta específica orientada a datos para ML]
@@ -61,6 +75,8 @@ specific_questions_analysis_task:
 
 json_structuring_and_classification_task:
   description: >
+    ⚠️ ADVERTENCIA INICIAL OBLIGATORIA: Mencionar siempre "Soy un asistente de IA. Los resultados de clasificación son automáticos y NO constituyen diagnóstico médico. Esta información es solo para referencia y se requiere evaluación médica profesional."
+    
     TAREA DOBLE - Estructurar datos y ejecutar clasificación:
     
     PARTE 1 - ESTRUCTURACIÓN:
@@ -70,17 +86,22 @@ json_structuring_and_classification_task:
     - Hipótesis preliminares 
     - Preguntas específicas y sus respuestas
     - Timestamp y metadata
+    - Advertencias de que es procesamiento automatizado
     
     PARTE 2 - CLASIFICACIÓN:
-    Enviar los datos estructurados al modelo de clasificación Hugging Face para obtener:
+    Enviar los datos estructurados al modelo de clasificación automatizada para obtener:
     - Categoría médica principal
     - Nivel de confianza
-    - Recomendaciones
+    - Recomendaciones preliminares
+    - SIEMPRE incluir advertencia de que NO es diagnóstico médico
     
-    El JSON debe ser válido y optimizado para el modelo de clasificación médica Hugging Face.
+    El JSON debe ser válido y optimizado para el modelo de clasificación médica automatizada.
   expected_output: >
+    ⚠️ ADVERTENCIA: Esta clasificación es generada por IA con fines informativos únicamente. NO constituye diagnóstico médico y se requiere evaluación médica profesional.
+    
     JSON completo con datos estructurados Y resultado de clasificación:
     {
+      "ai_disclaimer": "⚠️ IMPORTANTE: Esta información es generada por IA y NO sustituye el diagnóstico médico profesional. Consulta a un médico certificado.",
       "patient_id": "auto-generado",
       "timestamp": "ISO format",
       "consultation_topic": "tema de consulta",
@@ -94,7 +115,7 @@ json_structuring_and_classification_task:
         "habits": "hábitos relevantes"
       },
       "specific_analysis": {
-        "hypotheses": ["hip1", "hip2", "hip3"],
+        "hypotheses": ["hip1 (IA - no diagnóstico)", "hip2 (IA - no diagnóstico)", "hip3 (IA - no diagnóstico)"],
         "specific_questions": ["q1", "q2", "q3", "q4", "q5"],
         "specific_answers": ["resp1", "resp2", "resp3", "resp4", "resp5"]
       },
@@ -106,16 +127,20 @@ json_structuring_and_classification_task:
         "risk_factors": ["riesgos"]
       },
       "classification_result": {
-        "primary_category": "categoria_principal",
+        "primary_category": "categoria_principal (IA - solo referencia)",
         "confidence_score": 0.85,
-        "secondary_categories": ["categoria_secundaria"],
-        "model_used": "hugging_face_medical_classifier",
-        "reasoning": "Explicación del modelo",
-        "recommendations": ["recomendacion1", "recomendacion2"]
+        "secondary_categories": ["categoria_secundaria (IA - solo referencia)"],
+        "model_used": "ai_medical_classifier_automated",
+        "reasoning": "Explicación del modelo de IA",
+        "recommendations": ["recomendacion1 - consultar médico", "recomendacion2 - evaluación profesional"],
+        "medical_disclaimer": "⚠️ ADVERTENCIA: Clasificación automática de IA. NO es diagnóstico médico. Se requiere consulta médica profesional."
       },
       "classification_ready": true,
-      "process_completed": true
+      "process_completed": true,
+      "final_disclaimer": "⚠️ RECORDATORIO FINAL: Esta información es generada por inteligencia artificial y NO sustituye la valoración médica profesional de un doctor certificado."
     }
+    
+    ⚠️ MENSAJE FINAL OBLIGATORIO: "Recuerda que soy DiagnostiCAT, un asistente de IA para recopilación de información médica. Toda la información proporcionada es solo para referencia y NO sustituye la consulta con un médico profesional. Por favor, consulta a un especialista médico para diagnóstico y tratamiento adecuados."
   agent: json_data_structurer
   context:
     - conversational_interview_task
