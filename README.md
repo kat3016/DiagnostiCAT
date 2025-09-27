@@ -57,25 +57,25 @@ DiagnostiCAT/
 └── requirements.txt             # Dependencias Python
 ```
 🔄 Flujo de Trabajo
-Consentimiento Informado → Usuario acepta términos médicos
-Entrevista Inicial → Agente realiza 7 preguntas estructuradas
-Análisis Preliminar → Generación de hipótesis y preguntas específicas
-Estructuración JSON → Conversión de datos a formato estándar
-Clasificación Médica → Modelo Hugging Face clasifica síntomas
-Diagnóstico de IA → Presentación de resultados con disclaimers
+- Consentimiento Informado → Usuario acepta términos médicos
+- Entrevista Inicial → Agente realiza 7 preguntas estructuradas
+- Análisis Preliminar → Generación de hipótesis y preguntas específicas
+- Estructuración JSON → Conversión de datos a formato estándar
+- Clasificación Médica → Modelo Hugging Face clasifica síntomas
+- Diagnóstico de IA → Presentación de resultados con disclaimers
 📦 Dependencias Principales
-Backend (Python)
-fastapi>=0.104.1              # Framework web moderno
-uvicorn[standard]>=0.24.0     # Servidor ASGI
-pydantic>=2.4.2               # Validación de datos
-crewai>=0.28.8                # Framework de agentes de IA
-transformers>=4.36.0          # Modelos Hugging Face
-torch>=2.1.0                  # Framework de deep learning
-langchain-openai>=0.0.2       # Integración OpenAI
-sqlalchemy>=2.0.23            # ORM de base de datos
-httpx>=0.25.0                 # Cliente HTTP asíncrono
-python-dotenv>=1.0.0          # Gestión de variables de entorno
-Frontend (Node.js)
+- Backend (Python)
+- fastapi>=0.104.1              # Framework web moderno
+- uvicorn[standard]>=0.24.0     # Servidor ASGI
+- pydantic>=2.4.2               # Validación de datos
+- crewai>=0.28.8                # Framework de agentes de IA
+- transformers>=4.36.0          # Modelos Hugging Face
+- torch>=2.1.0                  # Framework de deep learning
+- langchain-openai>=0.0.2       # Integración OpenAI
+- sqlalchemy>=2.0.23            # ORM de base de datos
+- httpx>=0.25.0                 # Cliente HTTP asíncrono
+- python-dotenv>=1.0.0          # Gestión de variables de entorno
+- Frontend (Node.js)
 {
   "react": "^18.2.0",
   "react-dom": "^18.2.0",
