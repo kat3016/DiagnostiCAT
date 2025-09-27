@@ -312,23 +312,40 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     )
 
 
-def format_interview_data_for_agent(symptoms_data: Dict[str, Any]) -> str:
+def format_interview_data_for_agent(symptoms_data) -> str:
     """Formatea los datos de la entrevista para el agente de CrewAI"""
     interview_text = "ENTREVISTA CONVERSACIONAL COMPLETADA:\n"
     
-    for i, (question, answer) in enumerate(symptoms_data.items(), 1):
-        if question in ["motivo_consulta", "inicio_sintomas", "intensidad", "antecedentes_medicos", 
-                       "medicamentos_actuales", "antecedentes_familiares", "habitos_relevantes"]:
-            interview_text += f"{i}. {question.replace('_', ' ').title()}: {answer}\n"
+    # Manejar tanto diccionarios como listas
+    if isinstance(symptoms_data, dict):
+        for i, (question, answer) in enumerate(symptoms_data.items(), 1):
+            if question in ["motivo_consulta", "inicio_sintomas", "intensidad", "antecedentes_medicos", 
+                           "medicamentos_actuales", "antecedentes_familiares", "habitos_relevantes"]:
+                interview_text += f"{i}. {question.replace('_', ' ').title()}: {answer}\n"
+    elif isinstance(symptoms_data, list):
+        # Procesar lista de síntomas recopilados
+        questions_map = {
+            0: "Motivo Consulta",
+            1: "Inicio Sintomas", 
+            2: "Intensidad",
+            3: "Factores Agravantes/Mejorantes",
+            4: "Síntomas Adicionales",
+            5: "Medicamentos Actuales",
+            6: "Antecedentes Medicos"
+        }
+        
+        for i, symptom in enumerate(symptoms_data):
+            question_type = questions_map.get(i, f"Información {i+1}")
+            # Limpiar el formato "tipo: respuesta" 
+            clean_answer = symptom.split(": ", 1)[-1] if ": " in symptom else symptom
+            interview_text += f"{i+1}. {question_type}: {clean_answer}\n"
     
     return interview_text
 
 
 def parse_agent_analysis(analysis_result: str) -> tuple[List[str], List[str]]:
     """Parsea el resultado del agente para extraer hipótesis y preguntas"""
-    print(f"🔍 INICIO PARSEO DEL AGENTE:")
-    print(f"📄 Contenido completo:\n{analysis_result}")
-    print(f"🔍" + "="*50)
+    print(f"🔍 Parseando resultado del agente...")
     
     try:
         # Buscar hipótesis preliminares
@@ -339,21 +356,18 @@ def parse_agent_analysis(analysis_result: str) -> tuple[List[str], List[str]]:
         in_hypotheses_section = False
         in_questions_section = False
         
-        for i, line in enumerate(lines):
+        for line in lines:
             line = line.strip()
-            print(f"📝 Línea {i}: '{line}'")
             
             # Buscar secciones con más variaciones
             if any(keyword in line.upper() for keyword in ["HIPÓTESIS", "HIPOTESIS", "HYPOTHESES", "PRELIMINAR"]):
                 in_hypotheses_section = True
                 in_questions_section = False
-                print(f"🎯 Encontrada sección de hipótesis en línea {i}")
                 continue
             
             if any(keyword in line.upper() for keyword in ["PREGUNTAS", "QUESTIONS", "ESPECÍFICAS", "ESPECIFICAS", "CLASIFICACIÓN", "CLASIFICACION"]):
                 in_hypotheses_section = False
                 in_questions_section = True
-                print(f"❓ Encontrada sección de preguntas en línea {i}")
                 continue
             
             # Extraer hipótesis (buscar patrones numerados)
@@ -361,37 +375,62 @@ def parse_agent_analysis(analysis_result: str) -> tuple[List[str], List[str]]:
                 if line.startswith(("1.", "2.", "3.", "•", "-", "*")) or line[0].isdigit():
                     hypothesis = line[2:].strip() if line.startswith(("1.", "2.", "3.")) else line.strip()
                     hypotheses.append(hypothesis)
-                    print(f"✅ Hipótesis extraída: '{hypothesis}'")
             
-            # Extraer preguntas
+            # Extraer preguntas con formato más flexible
             if in_questions_section and line:
-                if line.startswith(("1.", "2.", "3.", "4.", "5.", "•", "-", "*")) or line[0].isdigit():
-                    question = line[2:].strip() if line[0].isdigit() and line[1] == '.' else line.strip()
-                    if question.endswith('?') or any(word in question.lower() for word in ['qué', 'cómo', 'cuándo', 'dónde', 'por qué', 'puede']):
+                # Detectar líneas que empiecen con números o contienen preguntas
+                if (line.startswith(("1.", "2.", "3.", "4.", "5.", "•", "-", "*")) or 
+                    (line and line[0].isdigit()) or 
+                    '?' in line):
+                    
+                    # Limpiar la pregunta
+                    question = line
+                    
+                    # Remover número inicial si existe (formato "1. ", "2. ", etc.)
+                    if len(line) > 2 and line[0].isdigit() and line[1] in ['.', ' ']:
+                        if line[1] == '.':
+                            question = line[2:].strip()
+                        elif line[1] == ' ':
+                            question = line[2:].strip()
+                    
+                    # Remover asteriscos y texto en negrita si existe
+                    question = question.replace('**', '').strip()
+                    
+                    # Verificar que sea una pregunta válida (debe contener ¿ y ?)
+                    if ('?' in question and '¿' in question and 
+                        len(question) > 10):  # Preguntas válidas deben tener longitud mínima
+                        
+                        # Extraer solo la pregunta principal (antes del guión si hay explicación)
+                        if ' - ' in question:
+                            question = question.split(' - ')[0].strip()
+                        if '**Objetivo:**' in question:
+                            question = question.split('**Objetivo:**')[0].strip()
+                        
+                        # Limpiar espacios extra
+                        question = ' '.join(question.split())
+                            
                         questions.append(question)
-                        print(f"❓ Pregunta extraída: '{question}'")
+                        print(f"✅ Pregunta extraída: '{question}'")
         
-        print(f"📊 RESULTADO PARSEO:")
-        print(f"🎯 Hipótesis encontradas: {len(hypotheses)} - {hypotheses}")
-        print(f"❓ Preguntas encontradas: {len(questions)} - {questions}")
+        print(f"📊 Extraídas {len(hypotheses)} hipótesis y {len(questions)} preguntas")
         
         # Solo usar fallback si NO se encontraron resultados del agente
         if len(hypotheses) == 0:
-            print("⚠️  No se encontraron hipótesis, usando fallback")
+            print("⚠️  No se encontraron hipótesis del agente")
             hypotheses = [
-                "El agente no pudo generar hipótesis específicas",
-                "Se requiere más información para el análisis",
-                "Consulta médica presencial recomendada"
+                "Requiere análisis médico más detallado",
+                "Se necesita más información específica",
+                "Evaluación médica presencial recomendada"
             ]
         
         if len(questions) == 0:
-            print("⚠️  No se encontraron preguntas, FALLO DEL AGENTE")
+            print("⚠️  No se encontraron preguntas del agente")
             questions = [
-                "El agente no pudo generar preguntas específicas. ¿Puede proporcionar más detalles?",
-                "¿Hay algo más que considere importante mencionar sobre sus síntomas?",
-                "¿Qué información adicional cree que sería útil para su evaluación?",
-                "¿Ha experimentado síntomas similares anteriormente?",
-                "¿Hay algún factor que haya notado que mejore o empeore su condición?"
+                "¿Puede proporcionar más detalles sobre la localización de sus síntomas?",
+                "¿Los síntomas varían en intensidad durante el día?",
+                "¿Ha notado factores que mejoren o empeoren su condición?",
+                "¿Tiene antecedentes de condiciones similares?",
+                "¿Cómo describiría la progresión de sus síntomas?"
             ]
         
         # Asegurar exactamente 3 hipótesis y 5 preguntas
@@ -480,15 +519,13 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
             if hybrid_result["success"]:
                 print(f"✅ AGENTE HÍBRIDO FUNCIONÓ CON {hybrid_result['provider'].upper()}!")
                 analysis_result = hybrid_result["content"]
+                
+                # 🐛 Logging para debugging (puedes eliminar esto luego)
+                print(f"🤖 Resultado del agente {hybrid_result['provider']}:")
+                print(f"� {analysis_result[:200]}..." if len(analysis_result) > 200 else analysis_result)
             else:
                 print(f"❌ AGENTE HÍBRIDO FALLÓ, ERROR CRÍTICO...")
                 raise Exception(f"Todos los agentes fallaron: {hybrid_result['error']}")
-            
-            # 🐛 DEBUG: Ver qué devuelve realmente el agente
-            print(f"🤖 AGENTE RESULTADO CRUDO:")
-            print(f"📝 {analysis_result}")
-            print(f"📝 Tipo: {type(analysis_result)}")
-            print(f"🔍" + "="*80)
             
             # Parsear el resultado del agente
             hypotheses, questions = parse_agent_analysis(analysis_result)
