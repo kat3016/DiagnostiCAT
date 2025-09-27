@@ -188,8 +188,4 @@ Desarrollado con ❤️ para mejorar el acceso a la asistencia médica inicial m
 
 🚀 ¿Listo para comenzar? Sigue las instrucciones de despliegue y ¡comienza a usar DiagnostiCAT!
 
-📞 Soporte: Abre un issue en GitHub para soporte técnico.
-
-Claude Sonnet 4 • 1x
-
 
