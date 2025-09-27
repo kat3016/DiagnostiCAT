@@ -1,236 +1,194 @@
 # DiagnostiCAT 🏥🤖
+Sistema de Agentes de IA para Conversación Médica y Anamnesis Conversacional
 
-Sistema de Agentes de IA para Conversación Médica - Una plataforma avanzada que utiliza inteligencia artificial para proporcionar asistencia médica inicial y triaje automatizado.
+DiagnostiCAT es una plataforma avanzada que utiliza múltiples agentes de inteligencia artificial especializados para proporcionar asistencia médica inicial, realizar anamnesis conversacional estructurada y clasificación automatizada de síntomas médicos.
 
-## 🌟 Características
+🌟 Características Principales
+🤖 Sistema Multi-Agente: Tres agentes especializados trabajando en secuencia
 
-- **Múltiples Agentes Especializados**: Médico General, Enfermera de Triaje, y más
-- **Evaluación de Urgencia Automática**: Clasificación inteligente de síntomas
-- **Conversaciones Contextuales**: Historial de conversación persistente
-- **API RESTful Completa**: Endpoints bien documentados
-- **Arquitectura Escalable**: Diseño modular y extensible
-- **Interfaz Swagger**: Documentación interactiva automática
+Agente Entrevistador Conversacional: Realiza 7 preguntas médicas estructuradas
+Agente Analista Especializado: Genera hipótesis preliminares y preguntas específicas
+Agente Estructurador de Datos: Convierte información a JSON y ejecuta clasificación
+🔬 Clasificación Médica Avanzada: Integración con Hugging Face usando modelos médicos especializados
 
-## 🚀 Inicio Rápido
+💬 Anamnesis Conversacional: Flujo completo de recopilación de datos médicos
 
-### Prerrequisitos
+📊 Estructuración Inteligente: Conversión automática de conversaciones a datos médicos estructurados
 
-- Python 3.11+
-- PostgreSQL (opcional, usa SQLite por defecto)
-- Redis (opcional, para caché)
+🚨 Evaluación de Urgencia: Clasificación automática de niveles de prioridad médica
 
-### Instalación
+⚕️ Cumplimiento Ético: Consentimiento informado y disclaimers médicos obligatorios
 
-1. **Clonar el repositorio**
-```bash
-git clone <repository-url>
-cd DiagnostiCAT
-```
-
-2. **Crear entorno virtual**
-```bash
-python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
-```
-
-3. **Instalar dependencias**
-```bash
-pip install -r requirements.txt
-```
-
-4. **Configurar variables de entorno**
-```bash
-cp .env.example .env
-# Editar .env con tus configuraciones
-```
-
-5. **Ejecutar la aplicación**
-```bash
-uvicorn main:app --reload
-```
-
-La aplicación estará disponible en: http://localhost:8000
-
-## 🐳 Docker
-
-Para ejecutar con Docker:
-
-```bash
-# Construir y ejecutar
-docker-compose up --build
-
-# Solo ejecutar (si ya está construido)
-docker-compose up
-```
-
-## 📚 Uso de la API
-
-### Conversación Médica
-
-```bash
-# Iniciar conversación
-curl -X POST "http://localhost:8000/api/v1/chat/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Tengo dolor de cabeza desde hace 2 días",
-    "patient_context": {
-      "age": 30,
-      "gender": "femenino"
-    }
-  }'
-```
-
-### Gestión de Agentes
-
-```bash
-# Listar todos los agentes
-curl -X GET "http://localhost:8000/api/v1/agents/"
-
-# Obtener recomendación de agente
-curl -X POST "http://localhost:8000/api/v1/agents/recommend" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Tengo una emergencia médica"}'
-```
-
-## 🏗️ Arquitectura
-
-```
+🏗️ Arquitectura del Sistema
 DiagnostiCAT/
 ├── app/
-│   ├── agents/          # Agentes de IA médicos
-│   │   ├── base_agent.py
-│   │   └── medical_agents.py
-│   ├── core/            # Configuración y utilidades
-│   │   ├── config.py
-│   │   └── database.py
-│   ├── models/          # Modelos Pydantic
-│   │   ├── medical_models.py
-│   │   └── agent_models.py
-│   ├── routers/         # Endpoints de la API
-│   │   ├── medical_chat.py
-│   │   └── agents.py
-│   └── services/        # Lógica de negocio
-│       └── agent_service.py
-├── main.py              # Aplicación principal
-├── requirements.txt     # Dependencias
-└── README.md           # Documentación
-```
+│   ├── agents/                    # Agentes de IA especializados
+│   │   ├── base_agent.py         # Clase base para agentes
+│   │   └── medical_agents.py     # Agentes médicos específicos
+│   ├── core/                     # Configuración central
+│   │   ├── config.py            # Configuración de la aplicación
+│   │   └── database.py          # Gestión de base de datos
+│   ├── crew/                    # Configuración CrewAI
+│   │   ├── config/
+│   │   │   ├── agents.yaml      # Definición de agentes
+│   │   │   └── tasks.yaml       # Definición de tareas
+│   │   └── hybrid_agent.py      # Agente híbrido Nemotron/OpenAI
+│   ├── models/                  # Modelos de datos
+│   │   ├── medical_models.py    # Modelos médicos
+│   │   ├── agent_models.py      # Modelos de agentes
+│   │   └── structured_data_models.py # Modelos de datos estructurados
+│   ├── routers/                 # Endpoints de la API
+│   │   ├── medical_chat.py      # Chat médico principal
+│   │   └── anamnesis_flow.py    # Flujo de anamnesis
+│   └── services/                # Servicios de negocio
+│       ├── agent_service.py     # Orquestación de agentes
+│       ├── classification_service.py # Clasificación con Hugging Face
+│       ├── data_structuring_service.py # Estructuración de datos
+│       └── llm_service.py       # Servicio de modelos LLM
+├── frontend/                    # Interfaz de usuario React
+│   ├── src/
+│   │   ├── components/          # Componentes React
+│   │   └── services/            # Servicios API
+│   └── vite.config.js
+├── main.py                      # Aplicación FastAPI principal
+├── docker-compose.yml           # Orquestación de contenedores
+├── Dockerfile                   # Imagen de contenedor
+└── requirements.txt             # Dependencias Python
 
-## 🤖 Tipos de Agentes
-
-### 1. Médico General (`GeneralPractitionerAgent`)
-- **Especialidad**: Atención primaria y consultas generales
-- **Funciones**: 
-  - Evaluación inicial de síntomas
-  - Recomendaciones de tratamiento básico
-  - Derivación a especialistas cuando necesario
-
-### 2. Enfermera de Triaje (`TriageNurseAgent`)
-- **Especialidad**: Clasificación de urgencia médica
-- **Funciones**:
-  - Evaluación rápida de síntomas
-  - Clasificación de prioridad (Crítico/Alto/Medio/Bajo)
-  - Recomendaciones de atención inmediata
-
-### 3. Agentes Futuros (Extensibles)
-- Especialista en Cardiología
-- Especialista en Salud Mental
-- Médico de Emergencias
-- Y más...
-
-## 📊 Ejemplos de Uso
-
-### Consulta General
-```json
+🔄 Flujo de Trabajo
+Consentimiento Informado → Usuario acepta términos médicos
+Entrevista Inicial → Agente realiza 7 preguntas estructuradas
+Análisis Preliminar → Generación de hipótesis y preguntas específicas
+Estructuración JSON → Conversión de datos a formato estándar
+Clasificación Médica → Modelo Hugging Face clasifica síntomas
+Diagnóstico de IA → Presentación de resultados con disclaimers
+📦 Dependencias Principales
+Backend (Python)
+fastapi>=0.104.1              # Framework web moderno
+uvicorn[standard]>=0.24.0     # Servidor ASGI
+pydantic>=2.4.2               # Validación de datos
+crewai>=0.28.8                # Framework de agentes de IA
+transformers>=4.36.0          # Modelos Hugging Face
+torch>=2.1.0                  # Framework de deep learning
+langchain-openai>=0.0.2       # Integración OpenAI
+sqlalchemy>=2.0.23            # ORM de base de datos
+httpx>=0.25.0                 # Cliente HTTP asíncrono
+python-dotenv>=1.0.0          # Gestión de variables de entorno
+Frontend (Node.js)
 {
-  "message": "He tenido tos seca por una semana",
-  "patient_context": {
-    "age": 35,
-    "medical_history": ["asma leve"],
-    "current_medications": ["inhalador de salbutamol"]
-  }
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0",
+  "react-router-dom": "^6.8.0",
+  "axios": "^1.6.0",
+  "vite": "^5.0.0"
 }
-```
+Modelos de IA Utilizados
+NVIDIA Nemotron: meta/llama-3.1-8b-instruct (Principal)
+Hugging Face: emilyalsentzer/Bio_ClinicalBERT (Clasificación médica)
+OpenAI: gpt-4o-mini (Fallback)
+🚀 Despliegue
+Opción 1: Despliegue con Docker (Recomendado)
+git clone <repository-url>
+cd DiagnostiCAT
+Clonar el repositorio
+Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus API keys
+Ejecutar con Docker Compose
+docker-compose up --build
 
-### Evaluación de Urgencia
-```json
-{
-  "message": "Tengo dolor intenso en el pecho y dificultad para respirar",
-  "patient_context": {
-    "age": 55,
-    "gender": "masculino"
-  }
-}
-```
+Servicios disponibles:
 
-## 🔧 Configuración Avanzada
+Backend API: http://localhost:8000
+Frontend React: http://localhost:3000
+PostgreSQL: localhost:5432
+Redis: localhost:6379
+Opción 2: Despliegue Manual
+Backend
+Preparar entorno Python
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+Configurar variables de entorno
+# Crear archivo .env con:
+NVIDIA_API_KEY=your_nvidia_api_key_here
+LLM_PROVIDER=nemotron
+DEBUG=False
+DATABASE_URL=sqlite:///./diagnosticat.db
+Ejecutar servidor
+uvicorn main:app --host 0.0.0.0 --port 8000
+Frontend
+Instalar dependencias
+cd frontend
+npm install
+Ejecutar en desarrollo
+npm run dev
+Compilar para producción
+npm run build
+npm run preview
+Opción 3: Despliegue en la Nube
+AWS Lambda (Serverless)
+# El proyecto incluye soporte para Mangum
+pip install mangum
+# Desplegar usando AWS SAM o Serverless Framework
+Railway/Render/Vercel
+⚙️ Configuración
+Variables de Entorno Requeridas
+API Keys Necesarias
+NVIDIA API Key (Principal): https://build.nvidia.com/
+OpenAI API Key (Opcional/Fallback): https://platform.openai.com/
+📊 Endpoints de la API
+Conversación Médica
+POST /api/v1/chat/ - Iniciar conversación médica
+GET /api/v1/chat/{id}/history - Historial de conversación
+Flujo de Anamnesis
+POST /api/v1/flow/consent - Registrar consentimiento
+POST /api/v1/flow/interview/answer - Responder preguntas de entrevista
+POST /api/v1/flow/analysis/preliminary - Análisis preliminar
+POST /api/v1/flow/structure-and-classify - Estructuración y clasificación
+Documentación
+Swagger UI: http://localhost:8000/docs
+ReDoc: http://localhost:8000/redoc
+🧪 Testing
+🔒 Consideraciones de Seguridad
+✅ Consentimiento informado obligatorio
+✅ Disclaimers médicos en todas las respuestas
+✅ Datos médicos tratados con confidencialidad
+✅ Validación de entrada en todos los endpoints
+✅ CORS configurado para dominios específicos
+✅ Variables de entorno para información sensible
+⚠️ Importante - Disclaimer Médico
+ADVERTENCIA CRÍTICA: DiagnostiCAT es una herramienta de asistencia médica inicial basada en IA.
 
-### Variables de Entorno
+❌ NO reemplaza la consulta médica profesional
+❌ NO proporciona diagnósticos médicos definitivos
+❌ NO prescribe medicamentos ni tratamientos
+✅ SÍ proporciona orientación médica inicial informativos
+✅ SÍ recomienda consulta médica profesional
+En emergencias médicas, contacta inmediatamente los servicios de urgencias locales.
 
-| Variable | Descripción | Valor por Defecto |
-|----------|-------------|-------------------|
-| `DEBUG` | Modo debug | `False` |
-| `HOST` | Host de la aplicación | `0.0.0.0` |
-| `PORT` | Puerto de la aplicación | `8000` |
-| `DATABASE_URL` | URL de base de datos | `sqlite:///./diagnosticat.db` |
-| `OPENAI_API_KEY` | Clave API de OpenAI | `""` |
-| `OPENAI_MODEL` | Modelo de OpenAI | `gpt-4` |
+🎯 Casos de Uso
+🏥 Triaje médico inicial en clínicas y hospitales
+📱 Asistentes médicos digitales 24/7
+📊 Recopilación estructurada de datos médicos
+🔍 Pre-evaluación antes de consultas médicas
+📈 Análisis de patrones en síntomas médicos
+🤝 Contribuciones
+Fork el proyecto
+Crea una rama (git checkout -b feature/nueva-funcionalidad)
+Commit cambios (git commit -m 'Agregar nueva funcionalidad')
+Push a la rama (git push origin feature/nueva-funcionalidad)
+Abre un Pull Request
+📄 Licencia
+Este proyecto está bajo la Licencia MIT. Ver archivo LICENSE para detalles.
 
-### Integración con OpenAI
+👥 Equipo de Desarrollo
+Desarrollado con ❤️ para mejorar el acceso a la asistencia médica inicial mediante inteligencia artificial.
 
-Para usar modelos reales de OpenAI:
+🚀 ¿Listo para comenzar? Sigue las instrucciones de despliegue y ¡comienza a usar DiagnostiCAT!
 
-1. Obtén una API key de OpenAI
-2. Configura `OPENAI_API_KEY` en tu `.env`
-3. Los agentes automáticamente usarán el modelo configurado
+📞 Soporte: Abre un issue en GitHub para soporte técnico.
 
-## 🧪 Testing
+Claude Sonnet 4 • 1x
 
-```bash
-# Ejecutar tests
-pytest
 
-# Con cobertura
-pytest --cov=app tests/
-```
-
-## 📖 Documentación API
-
-Una vez ejecutando la aplicación:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## 🤝 Contribuciones
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-## 📝 Roadmap
-
-- [ ] Integración completa con OpenAI/GPT-4
-- [ ] Soporte para múltiples idiomas
-- [ ] Interfaz web frontend
-- [ ] Integración con sistemas de historiales médicos
-- [ ] Agentes especializados adicionales
-- [ ] Sistema de autenticación y autorización
-- [ ] Analytics y métricas avanzadas
-
-## ⚠️ Disclaimer Médico
-
-**IMPORTANTE**: Este sistema es una herramienta de asistencia y NO reemplaza la consulta médica profesional. Siempre busca atención médica calificada para diagnósticos y tratamientos definitivos.
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
-
-## 👥 Equipo
-
-Desarrollado con ❤️ para mejorar el acceso a la información médica inicial.
-
----
-
-¿Tienes preguntas? ¡Abre un issue o contacta al equipo de desarrollo!
