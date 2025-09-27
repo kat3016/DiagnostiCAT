@@ -293,7 +293,13 @@ CATEGORÍAS DISPONIBLES:
 - psychiatric: Problemas de salud mental
 - other: Otros casos no clasificables
 
-FORMATO DE RESPUESTA (JSON):
+INSTRUCCIONES CRÍTICAS:
+1. Responde ÚNICAMENTE con JSON válido, sin texto adicional
+2. No incluyas explicaciones antes o después del JSON
+3. Usa comillas dobles para todas las strings
+4. Asegúrate de que todas las llaves y corchetes estén balanceados
+
+FORMATO DE RESPUESTA (JSON ÚNICAMENTE):
 {{
   "primary_category": "categoria_principal",
   "confidence_score": 0.85,
@@ -303,11 +309,11 @@ FORMATO DE RESPUESTA (JSON):
     "recomendacion1",
     "recomendacion2"
   ],
-  "urgency_level": "low|medium|high|critical",
+  "urgency_level": "low",
   "reasoning": "Explicación breve del diagnóstico"
 }}
 
-Analiza cuidadosamente y responde SOLO con el JSON válido."""
+IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto adicional, explicaciones o comentarios."""
         
         try:
             # Usar hybrid_agent en lugar de llm_service
@@ -328,7 +334,9 @@ Analiza cuidadosamente y responde SOLO con el JSON válido."""
             
             # Intentar parsear la respuesta como JSON
             try:
-                classification_result = json.loads(llm_response["response"])
+                # Intentar extraer JSON de la respuesta (podría tener texto adicional)
+                json_str = self._extract_json_from_text(llm_response["response"])
+                classification_result = json.loads(json_str)
                 
                 # Validar estructura
                 required_fields = ["primary_category", "confidence_score", "recommendations", "urgency_level"]
@@ -341,13 +349,16 @@ Analiza cuidadosamente y responde SOLO con el JSON válido."""
                     "model_name": self.model_name + "_llm_fallback",
                     "model_version": self.version,
                     "classification_timestamp": datetime.now().isoformat(),
-                    "tokens_used": llm_response["tokens_used"],
-                    "method": "llm_fallback"
+                    "tokens_used": 0,  # hybrid_agent no provee esta información
+                    "method": "llm_fallback",
+                    "provider": llm_response.get("model", "unknown")
                 })
                 
                 return classification_result
                 
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"❌ Error parseando JSON del LLM: {str(e)}")
+                print(f"🔍 Respuesta del LLM: {llm_response['response'][:500]}...")
                 # Si no es JSON válido, crear estructura básica
                 return self._create_fallback_classification(structured_data, llm_response["response"])
                 
@@ -595,6 +606,37 @@ Analiza cuidadosamente y responde SOLO con el JSON válido."""
             "classification_method": "zero-shot-classification",
             "fallback_available": True
         }
+    
+    def _extract_json_from_text(self, text: str) -> str:
+        """Extrae JSON válido de un texto que puede contener contenido adicional"""
+        import re
+        
+        # Intentar encontrar JSON usando expresiones regulares
+        # Buscar desde { hasta } balanceado
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, text, re.DOTALL)
+        
+        if matches:
+            # Tomar el JSON más largo (probablemente el más completo)
+            json_candidate = max(matches, key=len)
+            return json_candidate
+        
+        # Si no encuentra JSON con llaves balanceadas, buscar manualmente
+        start_idx = text.find('{')
+        if start_idx == -1:
+            raise ValueError("No se encontró inicio de JSON")
+        
+        # Buscar el final del JSON balanceando llaves
+        brace_count = 0
+        for i, char in enumerate(text[start_idx:], start_idx):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return text[start_idx:i+1]
+        
+        raise ValueError("JSON no balanceado - no se encontró cierre")
     
     async def switch_model(self, use_medical_bert: bool = False):
         """Cambiar entre modelo médico y modelo general para zero-shot"""
