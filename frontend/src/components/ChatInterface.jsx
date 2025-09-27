@@ -5,7 +5,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '¡Hola! Soy su asistente médico virtual de DiagnostiCAT. 🏥\n\nAntes de comenzar con su consulta médica, necesito su consentimiento informado.\n\n¿Acepta que procese su información médica para brindarle asistencia personalizada?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar',
+      content: '⚠️ **ADVERTENCIA IMPORTANTE** ⚠️\n\n¡Hola! Soy **DiagnostiCAT**, un **asistente de inteligencia artificial** para recopilación de información médica. 🤖🏥\n\n🔴 **IMPORTANTE**: Soy un modelo de lenguaje de IA y **NO sustituyo la valoración médica profesional de un doctor certificado**. Esta herramienta es únicamente para fines informativos.\n\n📋 Antes de continuar, necesito su consentimiento informado para procesar información médica con fines educativos e informativos.\n\n¿Acepta que procese su información médica para brindarle asistencia informativa?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar\n\n⚠️ **Recordatorio**: Para diagnóstico y tratamiento médico real, consulte siempre a un profesional médico certificado.',
       timestamp: new Date(),
       isWelcome: true
     }
@@ -52,7 +52,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       setMessages([
         {
           role: 'assistant',
-          content: '¡Hola! Soy su asistente médico virtual de DiagnostiCAT. 🏥\n\nAntes de comenzar con su consulta médica, necesito su consentimiento informado.\n\n¿Acepta que procese su información médica para brindarle asistencia personalizada?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar',
+          content: '⚠️ **ADVERTENCIA IMPORTANTE** ⚠️\n\n¡Hola! Soy **DiagnostiCAT**, un **asistente de inteligencia artificial** para recopilación de información médica. 🤖🏥\n\n🔴 **IMPORTANTE**: Soy un modelo de lenguaje de IA y **NO sustituyo la valoración médica profesional de un doctor certificado**. Esta herramienta es únicamente para fines informativos.\n\n📋 Antes de continuar, necesito su consentimiento informado para procesar información médica con fines educativos e informativos.\n\n¿Acepta que procese su información médica para brindarle asistencia informativa?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar\n\n⚠️ **Recordatorio**: Para diagnóstico y tratamiento médico real, consulte siempre a un profesional médico certificado.',
           timestamp: new Date(),
           isWelcome: true
         }
