@@ -13,11 +13,22 @@ from app.core.config import settings
 from app.routers import medical_chat
 from app.routers import consent_anamnesis
 from app.core.database import create_tables
+from app.core.validators import validate_llm_configuration, LLMConfigurationError, get_configuration_status
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestión del ciclo de vida de la aplicación"""
+    # Validar configuración de LLM antes de iniciar
+    try:
+        validate_llm_configuration()
+        print("✅ Configuración de LLM validada correctamente")
+    except LLMConfigurationError as e:
+        print("❌ ERROR DE CONFIGURACIÓN:")
+        print(str(e))
+        print("\n🚨 DiagnostiCAT requiere modelos LLM reales configurados.")
+        print("   El servidor se iniciará pero fallará en las consultas médicas.")
+    
     # Inicialización
     await create_tables()
     print("🚀 DiagnostiCAT iniciado correctamente")
@@ -74,6 +85,17 @@ async def health_check():
         "status": "healthy",
         "service": "DiagnostiCAT",
         "timestamp": "2024-01-01T00:00:00Z"
+    }
+
+
+@app.get("/config/status")
+async def configuration_status():
+    """Endpoint para verificar el estado de configuración de LLM"""
+    status = get_configuration_status()
+    return {
+        "service": "DiagnostiCAT",
+        "llm_configuration": status,
+        "ready_for_medical_consultations": status["valid"]
     }
 
 

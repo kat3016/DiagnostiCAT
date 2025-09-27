@@ -45,8 +45,8 @@ class BaseAgent(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def assess_urgency(self, message: str, context: Dict[str, Any]) -> Severity:
-        """Evalúa la urgencia médica del mensaje"""
+    async def assess_urgency(self, message: str, context: Dict[str, Any]) -> Severity:
+        """Evalúa la urgencia médica del mensaje usando LLM"""
         raise NotImplementedError
 
     def _prepare_conversation_context(

@@ -66,7 +66,7 @@ async def anamnesis_summary(conversation_id: str):
         raise HTTPException(status_code=403, detail="Consentimiento no otorgado o inválido")
 
     structured = anamnesis_service.build_structured(conversation_id)
-    result = crew_orchestrator.summarize_and_followups(structured.dict())
+    result = await crew_orchestrator.summarize_and_followups(structured.dict())
     return {"structured": structured, **result}
 
 

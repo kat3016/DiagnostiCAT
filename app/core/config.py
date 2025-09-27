@@ -25,9 +25,19 @@ class Settings(BaseSettings):
     # Base de datos (por defecto SQLite para facilidad de arranque)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./diagnosticat.db")
 
-    # OpenAI / LLM
+    # OpenAI / LLM (para compatibilidad)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    # NVIDIA Nemotron
+    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
+    NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    NEMOTRON_MODEL: str = os.getenv("NEMOTRON_MODEL", "nvidia/nemotron-4-340b-instruct")
+    
+    # Configuración de modelo
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "nemotron")  # nemotron, openai, fallback
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1000"))
 
     # CrewAI (opcional)
     CREW_ENABLE: bool = os.getenv("CREW_ENABLE", "True").lower() == "true"
