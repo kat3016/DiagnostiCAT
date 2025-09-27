@@ -159,7 +159,7 @@ async def handle_consent(conversation_id: str, user_message_lower: str, original
         conversation["state"] = ConversationState.COLLECTING_SYMPTOMS
         conversation["consent_given"] = True
         
-        response_text = "¡Perfecto! Gracias por otorgar su consentimiento. Ahora puedo ayudarle con su consulta médica.\n\nVoy a hacerle algunas preguntas para entender mejor su situación. ¿Cuál es el síntoma principal o la razón de su consulta?"
+        response_text = "¡Perfecto! Gracias por otorgar su consentimiento.\n\n⚠️ **RECORDATORIO**: Soy DiagnostiCAT, un asistente de IA. Esta conversación NO sustituye una consulta médica profesional real.\n\nAhora puedo ayudarle a recopilar información médica básica para fines informativos.\n\nVoy a hacerle algunas preguntas para entender mejor su situación. ¿Cuál es el síntoma principal o la razón de su consulta?\n\n🏥 **Importante**: Para diagnóstico y tratamiento reales, consulte siempre a un médico certificado."
         
         conversation["messages"].append({
             "role": MessageRole.ASSISTANT,
