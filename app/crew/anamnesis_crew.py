@@ -12,6 +12,8 @@ import uuid
 
 from app.core.config import settings
 from app.crew.tools import classify_medical_data, json_validator, medical_data_formatter
+from app.crew.llm_config import get_nemotron_llm, configure_crewai_llm
+import os
 
 
 @CrewBase
@@ -22,6 +24,12 @@ class AnamnesisConversacionalCrew:
     tasks_config_path = os.path.join(os.path.dirname(__file__), 'config', 'tasks.yaml')
     
     def __init__(self):
+        # Configurar CrewAI para usar Nemotron
+        configure_crewai_llm()
+        
+        # Crear instancia del LLM de Nemotron
+        self.nemotron_llm = get_nemotron_llm()
+        
         # Cargar configuraciones YAML
         with open(self.agents_config_path, 'r', encoding='utf-8') as f:
             self.agents_config = yaml.safe_load(f)
@@ -62,6 +70,7 @@ class AnamnesisConversacionalCrew:
         """Agente para entrevista conversacional con preguntas fijas"""
         return Agent(
             config=self.agents_config['conversational_interviewer'],
+            llm=self.nemotron_llm,  # Usar Nemotron directamente
             verbose=True,
             allow_delegation=False,
             max_execution_time=300  # 5 minutos máximo
@@ -72,6 +81,7 @@ class AnamnesisConversacionalCrew:
         """Agente para análisis y preguntas específicas"""
         return Agent(
             config=self.agents_config['specific_questions_analyst'],
+            llm=self.nemotron_llm,  # Usar Nemotron directamente
             verbose=True,
             allow_delegation=False,
             max_execution_time=180  # 3 minutos máximo
@@ -82,6 +92,7 @@ class AnamnesisConversacionalCrew:
         """Agente para estructuración JSON y comunicación con modelo de clasificación"""
         return Agent(
             config=self.agents_config['json_data_structurer'],
+            llm=self.nemotron_llm,  # Usar Nemotron directamente
             verbose=True,
             allow_delegation=False,
             max_execution_time=300,  # 5 minutos máximo (incluye tiempo de clasificación)
