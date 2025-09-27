@@ -133,7 +133,22 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
         {messages.map((message, index) => (
           <div key={index} className={`message ${message.role} ${message.isError ? 'error' : ''} ${message.isWelcome ? 'welcome' : ''}`}>
             <div className="message-content">
-              <div className="message-text">{message.content}</div>
+              <div className="message-text">
+                {message.content.split('\n').map((line, i) => (
+                  <div key={i}>
+                    {line.includes('**') ? (
+                      <span dangerouslySetInnerHTML={{ 
+                        __html: line
+                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                          .replace(/• /g, '• ')
+                      }} />
+                    ) : (
+                      line
+                    )}
+                    {i < message.content.split('\n').length - 1 && <br />}
+                  </div>
+                ))}
+              </div>
               
               {/* Solo mostrar meta información para diagnósticos finales */}
               {message.is_diagnosis && (
@@ -245,7 +260,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
             disabled={!inputMessage.trim() || isLoading}
             className="send-button"
           >
-            {isLoading ? '⏳' : '📤'}
+            {isLoading ? '...' : '→'}
           </button>
         </div>
         

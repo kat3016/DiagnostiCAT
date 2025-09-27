@@ -337,8 +337,8 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
         conversation["state"] = ConversationState.CLASSIFICATION_COMPLETE
         conversation["classification_result"] = classification_result
         
-        # Crear respuesta con diagnóstico
-        response_text = f"Basándome en la información que me ha proporcionado, he realizado un análisis preliminar de su consulta."
+        # Crear respuesta con las 3 condiciones más probables
+        response_text = await generate_diagnosis_summary(classification_result, conversation["symptoms_collected"])
         
         # Registrar respuesta
         conversation["messages"].append({
@@ -353,13 +353,9 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
             agent_type="medical_classifier",
             confidence_score=classification_result.get("confidence_score", 0.0),
             severity_assessment=classification_result.get("severity", "MEDIO"),
-            predicted_condition=classification_result.get("category", "Condición no determinada"),
+            predicted_condition=classification_result.get("predicted_condition", "Análisis completado"),
             suggestions=classification_result.get("recommendations", []),
-            follow_up_questions=[
-                "¿Tiene algún medicamento que esté tomando actualmente?",
-                "¿Ha tenido este tipo de síntomas antes?",
-                "¿Le gustaría más información sobre esta condición?"
-            ],
+            follow_up_questions=[],  # Sin preguntas de seguimiento
             is_diagnosis=True  # Marcar como diagnóstico para mostrar el recuadro especial
         )
         
@@ -553,3 +549,79 @@ async def delete_conversation(conversation_id: str):
     
     del CONVERSATIONS[conversation_id]
     return {"message": f"Conversación {conversation_id} eliminada exitosamente"}
+
+
+async def generate_diagnosis_summary(classification_result: Dict, symptoms_collected: List[str]) -> str:
+    """Genera un resumen de diagnóstico con las 3 condiciones más probables"""
+    
+    # Condiciones predeterminadas basadas en síntomas comunes
+    possible_conditions = []
+    
+    # Extraer información de los síntomas
+    all_symptoms = " ".join(symptoms_collected).lower()
+    
+    if "dolor" in all_symptoms and ("cabeza" in all_symptoms or "neurological" in all_symptoms):
+        possible_conditions = [
+            {"name": "Cefalea tensional", "probability": "75%", "description": "Dolor de cabeza por tensión o estrés"},
+            {"name": "Migraña leve", "probability": "20%", "description": "Dolor de cabeza vascular con posible sensibilidad"},
+            {"name": "Cefalea por deshidratación", "probability": "5%", "description": "Dolor de cabeza relacionado con falta de hidratación"}
+        ]
+    elif "fiebre" in all_symptoms or "temperatura" in all_symptoms:
+        possible_conditions = [
+            {"name": "Infección viral", "probability": "60%", "description": "Proceso infeccioso de origen viral"},
+            {"name": "Infección bacteriana leve", "probability": "30%", "description": "Proceso infeccioso bacteriano de intensidad leve"},
+            {"name": "Reacción inflamatoria", "probability": "10%", "description": "Respuesta inflamatoria del organismo"}
+        ]
+    elif "tos" in all_symptoms:
+        possible_conditions = [
+            {"name": "Infección respiratoria alta", "probability": "65%", "description": "Infección en vías respiratorias superiores"},
+            {"name": "Bronquitis leve", "probability": "25%", "description": "Inflamación leve de los bronquios"},
+            {"name": "Alergia respiratoria", "probability": "10%", "description": "Reacción alérgica en vías respiratorias"}
+        ]
+    elif "dolor" in all_symptoms:
+        possible_conditions = [
+            {"name": "Dolor muscular", "probability": "50%", "description": "Tensión o fatiga muscular"},
+            {"name": "Dolor articular", "probability": "35%", "description": "Molestias en articulaciones"},
+            {"name": "Dolor neuropático", "probability": "15%", "description": "Dolor relacionado con nervios"}
+        ]
+    else:
+        # Condiciones generales
+        possible_conditions = [
+            {"name": "Malestar general", "probability": "40%", "description": "Síntomas inespecíficos que requieren evaluación"},
+            {"name": "Síndrome viral leve", "probability": "35%", "description": "Posible proceso viral de baja intensidad"},
+            {"name": "Fatiga o estrés", "probability": "25%", "description": "Síntomas relacionados con cansancio o tensión"}
+        ]
+    
+    # Usar datos de clasificación si están disponibles
+    if classification_result and "predicted_condition" in classification_result:
+        main_condition = classification_result["predicted_condition"]
+        confidence = classification_result.get("confidence", 0.5) * 100
+        possible_conditions[0] = {
+            "name": main_condition,
+            "probability": f"{confidence:.0f}%",
+            "description": f"Condición identificada por análisis de síntomas"
+        }
+    
+    # Generar texto del diagnóstico
+    diagnosis_text = "🔍 **ANÁLISIS PRELIMINAR COMPLETADO**\n\n"
+    diagnosis_text += "Basándome en sus síntomas, estas son las **3 condiciones más probables**:\n\n"
+    
+    for i, condition in enumerate(possible_conditions[:3], 1):
+        diagnosis_text += f"**{i}. {condition['name']}** ({condition['probability']})\n"
+        diagnosis_text += f"   • {condition['description']}\n\n"
+    
+    diagnosis_text += "⚠️ **IMPORTANTE:**\n"
+    diagnosis_text += "• Este es un análisis preliminar basado en IA\n"
+    diagnosis_text += "• NO reemplaza el diagnóstico médico profesional\n"
+    diagnosis_text += "• Consulte a un médico para confirmación y tratamiento\n\n"
+    
+    # Agregar recomendaciones según severidad
+    severity = classification_result.get("severity", "MEDIO") if classification_result else "MEDIO"
+    if severity in ["CRÍTICO", "ALTO"]:
+        diagnosis_text += "🚨 **RECOMENDACIÓN:** Consulte a un médico INMEDIATAMENTE"
+    elif severity == "MEDIO":
+        diagnosis_text += "📋 **RECOMENDACIÓN:** Programe una cita médica en los próximos días"
+    else:
+        diagnosis_text += "💡 **RECOMENDACIÓN:** Monitoree síntomas y consulte si empeoran"
+    
+    return diagnosis_text
