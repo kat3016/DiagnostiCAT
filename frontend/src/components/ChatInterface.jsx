@@ -23,8 +23,27 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Mantener el foco en el input cuando se carga el componente
   useEffect(() => {
-    inputRef.current?.focus();
+    const focusInput = () => {
+      if (inputRef.current && !isLoading) {
+        inputRef.current.focus();
+      }
+    };
+    
+    focusInput();
+    
+    // También enfocar cuando termina de cargar
+    if (!isLoading) {
+      setTimeout(focusInput, 100);
+    }
+  }, [isLoading]);
+
+  // Foco inicial del componente
+  useEffect(() => {
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 500);
   }, []);
 
   // Reiniciar el chat cuando conversationId cambia a null
@@ -50,6 +69,9 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       timestamp: new Date()
     };
 
+    // Guardamos el mensaje antes de limpiar el input
+    const messageToSend = inputMessage;
+    
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
@@ -59,7 +81,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       const { chatService } = await import('../services/apiService');
       
       const response = await chatService.sendMessage(
-        inputMessage,
+        messageToSend,
         conversationId,
         null // No enviamos contexto de paciente por simplicidad
       );
@@ -93,6 +115,10 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      // Mantener el foco en el input después de enviar el mensaje
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -251,14 +277,21 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
+            onFocus={(e) => e.target.selectionStart = e.target.value.length} // Cursor al final cuando obtiene foco
             placeholder="Describa sus síntomas o haga su consulta médica..."
             rows="3"
             disabled={isLoading}
+            autoFocus={true}
+            style={{
+              resize: 'none',
+              outline: 'none'
+            }}
           />
           <button 
             onClick={sendMessage}
             disabled={!inputMessage.trim() || isLoading}
             className="send-button"
+            onMouseDown={(e) => e.preventDefault()} // Evita que el botón quite el foco del textarea
           >
             {isLoading ? '...' : '→'}
           </button>
