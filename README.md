@@ -20,6 +20,7 @@ Agente Estructurador de Datos: Convierte información a JSON y ejecuta clasifica
 ⚕️ Cumplimiento Ético: Consentimiento informado y disclaimers médicos obligatorios
 
 🏗️ Arquitectura del Sistema
+```
 DiagnostiCAT/
 ├── app/
 │   ├── agents/                    # Agentes de IA especializados
@@ -54,7 +55,7 @@ DiagnostiCAT/
 ├── docker-compose.yml           # Orquestación de contenedores
 ├── Dockerfile                   # Imagen de contenedor
 └── requirements.txt             # Dependencias Python
-
+```
 🔄 Flujo de Trabajo
 Consentimiento Informado → Usuario acepta términos médicos
 Entrevista Inicial → Agente realiza 7 preguntas estructuradas
