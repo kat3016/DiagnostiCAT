@@ -11,8 +11,6 @@ from app.models.consent_models import ConsentRequest, ConsentResponse
 from app.models.medical_models import MessageModel, MessageRole
 from app.models.agent_models import AgentType
 from app.services.agent_service import agent_service
-from app.services.llm_service import llm_service
-from app.services.classification_service import classification_model
 
 router = APIRouter()
 
@@ -60,7 +58,7 @@ async def request_consent(consent: ConsentRequest):
 
 @router.post("/interview/start")
 async def start_initial_interview(conversation_id: str):
-    """Paso 2: Iniciar entrevista inicial con preguntas fijas"""
+    """Paso 2: Iniciar entrevista inicial con preguntas fijas usando CrewAI"""
     if conversation_id not in FLOW_STATE:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
@@ -68,34 +66,43 @@ async def start_initial_interview(conversation_id: str):
     if state["phase"] != FlowPhase.INITIAL_INTERVIEW:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
-    # Obtener agente de entrevista inicial
-    interview_agent = agent_service.get_agent_by_type(AgentType.INITIAL_INTERVIEW)
-    if not interview_agent:
-        raise HTTPException(status_code=500, detail="Agente de entrevista no disponible")
-    
-    # Primera pregunta fija
-    first_question = "¡Hola! Voy a hacerte algunas preguntas de rutina para conocer tu situación. ¿Cuál es el motivo principal de tu consulta hoy?"
-    
-    # Registrar mensaje
-    message = MessageModel(
-        role=MessageRole.ASSISTANT,
-        content=first_question,
-        timestamp=datetime.now()
-    )
-    state["messages"].append(message)
-    
-    return {
-        "conversation_id": conversation_id,
-        "phase": state["phase"],
-        "question": first_question,
-        "question_number": 1,
-        "total_questions": 7
-    }
+    try:
+        # Preparar inputs para CrewAI
+        inputs = {
+            "consultation_topic": "consulta médica general",
+            "patient_message": "Iniciar entrevista médica con primera pregunta fija",
+            "conversation_id": conversation_id,
+            "current_question": 1
+        }
+        
+        # Ejecutar entrevista inicial con CrewAI
+        first_question = await agent_service.run_initial_interview(inputs)
+        
+        # Registrar mensaje
+        message = MessageModel(
+            role=MessageRole.ASSISTANT,
+            content=first_question,
+            timestamp=datetime.now()
+        )
+        state["messages"].append(message)
+        state["current_question"] = 1
+        
+        return {
+            "conversation_id": conversation_id,
+            "phase": state["phase"],
+            "question": first_question,
+            "question_number": 1,
+            "total_questions": 7,
+            "agent_used": "initial_interviewer"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error iniciando entrevista: {str(e)}")
 
 
 @router.post("/interview/answer")
 async def submit_interview_answer(conversation_id: str, answer: str):
-    """Paso 2: Responder preguntas de la entrevista inicial"""
+    """Paso 2: Responder preguntas de la entrevista inicial usando CrewAI"""
     if conversation_id not in FLOW_STATE:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
@@ -111,49 +118,66 @@ async def submit_interview_answer(conversation_id: str, answer: str):
     )
     state["messages"].append(user_message)
     
-    # Obtener agente de entrevista
-    interview_agent = agent_service.get_agent_by_type(AgentType.INITIAL_INTERVIEW)
-    
-    # Procesar respuesta y obtener siguiente pregunta
-    agent_response = await interview_agent.process_message(
-        message=answer,
-        conversation_history=state["messages"],
-        patient_context={}
-    )
-    
-    # Registrar respuesta del agente
-    assistant_message = MessageModel(
-        role=MessageRole.ASSISTANT,
-        content=agent_response.response_text,
-        timestamp=datetime.now()
-    )
-    state["messages"].append(assistant_message)
-    
-    # Verificar si completó todas las preguntas
-    user_responses = [msg for msg in state["messages"] if msg.role == MessageRole.USER]
-    questions_completed = len(user_responses)
-    
-    if questions_completed >= 7:  # 7 preguntas fijas
-        state["phase"] = FlowPhase.PRELIMINARY_ANALYSIS
+    try:
+        # Verificar si completó todas las preguntas
+        user_responses = [msg for msg in state["messages"] if msg.role == MessageRole.USER]
+        questions_completed = len(user_responses)
+        
+        if questions_completed >= 7:  # 7 preguntas fijas completadas
+            state["phase"] = FlowPhase.PRELIMINARY_ANALYSIS
+            
+            # Guardar respuestas de entrevista
+            state["interview_completed"] = True
+            state["interview_data"] = {
+                f"question_{i+1}": msg.content 
+                for i, msg in enumerate(user_responses[:7])
+            }
+            
+            return {
+                "conversation_id": conversation_id,
+                "phase": state["phase"],
+                "message": "Entrevista inicial completada con 7 preguntas. Procediendo al análisis preliminar.",
+                "questions_completed": questions_completed,
+                "interview_data": state["interview_data"]
+            }
+        
+        # Preparar inputs para siguiente pregunta
+        inputs = {
+            "consultation_topic": "consulta médica general",
+            "patient_message": answer,
+            "conversation_id": conversation_id,
+            "current_question": questions_completed + 1,
+            "previous_answers": [msg.content for msg in user_responses]
+        }
+        
+        # Obtener siguiente pregunta con CrewAI
+        next_question = await agent_service.run_initial_interview(inputs)
+        
+        # Registrar respuesta del agente
+        assistant_message = MessageModel(
+            role=MessageRole.ASSISTANT,
+            content=next_question,
+            timestamp=datetime.now()
+        )
+        state["messages"].append(assistant_message)
+        state["current_question"] = questions_completed + 1
+        
         return {
             "conversation_id": conversation_id,
             "phase": state["phase"],
-            "message": "Entrevista inicial completada. Procediendo al análisis preliminar.",
-            "questions_completed": questions_completed
+            "response": next_question,
+            "question_number": questions_completed + 1,
+            "total_questions": 7,
+            "agent_used": "initial_interviewer"
         }
-    
-    return {
-        "conversation_id": conversation_id,
-        "phase": state["phase"],
-        "response": agent_response.response_text,
-        "question_number": questions_completed + 1,
-        "total_questions": 7
-    }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error procesando respuesta: {str(e)}")
 
 
 @router.post("/analysis/preliminary")
 async def generate_preliminary_analysis(conversation_id: str):
-    """Paso 3: Generar análisis preliminar e hipótesis"""
+    """Paso 3: Generar análisis preliminar e hipótesis usando CrewAI"""
     if conversation_id not in FLOW_STATE:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
@@ -161,33 +185,43 @@ async def generate_preliminary_analysis(conversation_id: str):
     if state["phase"] != FlowPhase.PRELIMINARY_ANALYSIS:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
-    # Obtener agente de análisis preliminar
-    analysis_agent = agent_service.get_agent_by_type(AgentType.PRELIMINARY_ANALYSIS)
-    if not analysis_agent:
-        raise HTTPException(status_code=500, detail="Agente de análisis no disponible")
-    
-    # Generar análisis preliminar
-    analysis_response = await analysis_agent.process_message(
-        message="Analizar entrevista inicial",
-        conversation_history=state["messages"],
-        patient_context={}
-    )
-    
-    # Guardar análisis
-    state["analysis_data"] = {
-        "analysis": analysis_response.response_text,
-        "timestamp": datetime.now()
-    }
-    
-    # Cambiar a fase de preguntas específicas
-    state["phase"] = FlowPhase.SPECIFIC_QUESTIONS
-    
-    return {
-        "conversation_id": conversation_id,
-        "phase": state["phase"],
-        "preliminary_analysis": analysis_response.response_text,
-        "next_step": "Responder preguntas específicas generadas"
-    }
+    try:
+        # Preparar datos de entrevista para análisis
+        interview_summary = "\n".join([
+            f"Pregunta {i+1}: {msg.content}" 
+            for i, msg in enumerate([msg for msg in state["messages"] if msg.role == MessageRole.USER][:7])
+        ])
+        
+        inputs = {
+            "consultation_topic": "consulta médica general",
+            "interview_data": interview_summary,
+            "conversation_id": conversation_id,
+            "interview_responses": state.get("interview_data", {})
+        }
+        
+        # Ejecutar análisis preliminar con CrewAI
+        analysis_result = await agent_service.run_preliminary_analysis(inputs)
+        
+        # Guardar análisis
+        state["analysis_data"] = {
+            "analysis": analysis_result,
+            "timestamp": datetime.now(),
+            "agent_used": "preliminary_analyst"
+        }
+        
+        # Cambiar a fase de preguntas específicas
+        state["phase"] = FlowPhase.SPECIFIC_QUESTIONS
+        
+        return {
+            "conversation_id": conversation_id,
+            "phase": state["phase"],
+            "preliminary_analysis": analysis_result,
+            "agent_used": "preliminary_analyst",
+            "next_step": "Responder preguntas específicas generadas por el análisis"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en análisis preliminar: {str(e)}")
 
 
 @router.post("/questions/specific")
@@ -214,7 +248,7 @@ async def answer_specific_questions(conversation_id: str, answers: List[str]):
 
 @router.post("/data/structure")
 async def structure_data(conversation_id: str):
-    """Paso 5: Estructurar datos en formato estandarizado"""
+    """Paso 5: Estructurar datos en formato estandarizado usando CrewAI"""
     if conversation_id not in FLOW_STATE:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
@@ -222,32 +256,39 @@ async def structure_data(conversation_id: str):
     if state["phase"] != FlowPhase.DATA_STRUCTURING:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
-    # Obtener agente de estructuración
-    structuring_agent = agent_service.get_agent_by_type(AgentType.DATA_STRUCTURING)
-    if not structuring_agent:
-        raise HTTPException(status_code=500, detail="Agente de estructuración no disponible")
-    
-    # Estructurar todos los datos
-    structuring_response = await structuring_agent.process_message(
-        message="Estructurar datos completos",
-        conversation_history=state["messages"],
-        patient_context={
-            "analysis": state["analysis_data"],
-            "specific_answers": state["specific_answers"]
+    try:
+        # Preparar todos los datos para estructuración
+        inputs = {
+            "consultation_topic": "consulta médica general",
+            "conversation_id": conversation_id,
+            "interview_data": state.get("interview_data", {}),
+            "analysis_data": state.get("analysis_data", {}),
+            "specific_answers": state.get("specific_answers", []),
+            "all_messages": [
+                {"role": msg.role, "content": msg.content, "timestamp": msg.timestamp.isoformat()}
+                for msg in state["messages"]
+            ]
         }
-    )
-    
-    # Guardar datos estructurados
-    state["structured_data"] = structuring_response.response_text
-    state["phase"] = FlowPhase.COMPLETED
-    
-    return {
-        "conversation_id": conversation_id,
-        "phase": state["phase"],
-        "structured_data": structuring_response.response_text,
-        "classification_ready": True,
-        "message": "Proceso de anamnesis conversacional completado exitosamente."
-    }
+        
+        # Ejecutar estructuración con CrewAI
+        structured_result = await agent_service.run_data_structuring(inputs)
+        
+        # Guardar datos estructurados
+        state["structured_data"] = structured_result
+        state["phase"] = FlowPhase.COMPLETED
+        state["classification_ready"] = True
+        
+        return {
+            "conversation_id": conversation_id,
+            "phase": state["phase"],
+            "structured_data": structured_result,
+            "classification_ready": True,
+            "agent_used": "data_structurer",
+            "message": "Proceso de anamnesis conversacional completado exitosamente."
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error estructurando datos: {str(e)}")
 
 
 @router.get("/flow/status/{conversation_id}")
@@ -301,37 +342,52 @@ async def classify_case(conversation_id: str):
     if state["phase"] != FlowPhase.COMPLETED:
         raise HTTPException(status_code=400, detail="Flujo no completado. Complete la estructuración de datos primero.")
     
-    # Preparar datos para clasificación
     try:
-        # Intentar parsear los datos estructurados
-        if isinstance(state["structured_data"], str):
-            import json
-            structured_data = json.loads(state["structured_data"])
-        else:
-            structured_data = state["structured_data"]
-    except:
-        # Si no se puede parsear, usar datos raw
-        structured_data = {
-            "raw_data": state["structured_data"],
-            "messages": [msg.dict() for msg in state["messages"]],
-            "analysis": state["analysis_data"],
-            "specific_answers": state["specific_answers"]
+        # Preparar datos para clasificación con CrewAI
+        inputs = {
+            "consultation_topic": "consulta médica general",
+            "conversation_id": conversation_id,
+            "structured_data": state.get("structured_data", ""),
+            "interview_data": state.get("interview_data", {}),
+            "analysis_data": state.get("analysis_data", {}),
+            "specific_answers": state.get("specific_answers", [])
         }
-    
-    # Ejecutar clasificación
-    classification_result = await classification_model.classify(structured_data)
-    
-    # Guardar resultado de clasificación
-    state["classification_result"] = classification_result
-    
-    return {
-        "conversation_id": conversation_id,
-        "classification": classification_result,
-        "model_info": classification_model.get_model_info()
-    }
+        
+        # Ejecutar clasificación con CrewAI
+        classification_result = await agent_service.run_classification(inputs)
+        
+        # Guardar resultado de clasificación
+        state["classification_result"] = classification_result
+        
+        return {
+            "conversation_id": conversation_id,
+            "classification": classification_result,
+            "agent_used": "medical_classifier",
+            "model_info": {
+                "name": "CrewAI Medical Classification Agent",
+                "version": "1.0",
+                "categories": ["neurological", "cardiovascular", "respiratory", 
+                             "gastrointestinal", "musculoskeletal", "dermatological", 
+                             "psychiatric", "other"]
+            },
+            "timestamp": datetime.now()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en clasificación: {str(e)}")
 
 
 @router.get("/model/info")
 async def get_model_info():
-    """Información del modelo de clasificación"""
-    return classification_model.get_model_info()
+    """Información del modelo de clasificación CrewAI"""
+    return {
+        "name": "CrewAI Medical Classification Agent",
+        "version": "1.0",
+        "description": "Agente de clasificación médica usando CrewAI",
+        "categories": [
+            "neurological", "cardiovascular", "respiratory", 
+            "gastrointestinal", "musculoskeletal", "dermatological", 
+            "psychiatric", "other"
+        ],
+        "crew_info": agent_service.get_crew_info()
+    }
