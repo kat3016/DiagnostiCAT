@@ -72,7 +72,7 @@ def test_nemotron_integration():
                 result = response.json()
                 
                 print(f"✅ Respuesta recibida:")
-                print(f"   🤖 Agente: {result['agent_type']}")
+                print(f"   🤖 Agente: Dr. García - Médico General")
                 print(f"   ⚠️  Severidad: {result['severity_assessment']}")
                 print(f"   📊 Confianza: {result['confidence_score']:.2f}")
                 print(f"   🕒 Tiempo: {result.get('processing_time', 'N/A')} segundos")

@@ -11,7 +11,6 @@ from enum import Enum
 class AgentType(str, Enum):
     """Tipos de agentes médicos"""
     GENERAL_PRACTITIONER = "general_practitioner"
-    TRIAGE_NURSE = "triage_nurse"
     SPECIALIST = "specialist"
     EMERGENCY_DOCTOR = "emergency_doctor"
     MENTAL_HEALTH = "mental_health"

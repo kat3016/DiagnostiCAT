@@ -162,7 +162,7 @@ def test_medical_chat():
         
         result = make_request("POST", "/api/v1/chat/", data=chat_data)
         
-        print(f"   🤖 Agente: {result['agent_type']}")
+        print(f"   🤖 Agente: {result['agent_type']} (Dr. García - Médico General)")
         print(f"   ⚠️  Severidad: {result['severity_assessment']}")
         print(f"   📊 Confianza: {result['confidence_score']:.2f}")
         print(f"   💬 Respuesta: {result['response'][:100]}...")

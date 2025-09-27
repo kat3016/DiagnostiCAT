@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 
 from app.agents.base_agent import BaseAgent
-from app.agents.medical_agents import GeneralPractitionerAgent, TriageNurseAgent
+from app.agents.medical_agents import GeneralPractitionerAgent
 from app.models.agent_models import AgentType, AgentInfo, AgentMetrics
 from app.models.medical_models import MessageModel
 
@@ -21,15 +21,13 @@ class AgentService:
     
     def _initialize_default_agents(self):
         """Inicializa agentes por defecto"""
-        # Crear agentes por defecto
+        # Crear agente médico general
         gp_agent = GeneralPractitionerAgent()
-        triage_agent = TriageNurseAgent()
         
-        # Registrar agentes
+        # Registrar agente
         self.agents[gp_agent.id] = gp_agent
-        self.agents[triage_agent.id] = triage_agent
         
-        print(f"✅ Agentes inicializados: {len(self.agents)} agentes disponibles")
+        print(f"✅ Agente inicializado: {len(self.agents)} agente disponible")
     
     def get_agent_by_id(self, agent_id: str) -> Optional[BaseAgent]:
         """Obtiene un agente por su ID"""
@@ -85,23 +83,9 @@ class AgentService:
             conversation_history: Historial de conversación
             
         Returns:
-            BaseAgent: Agente recomendado
+            BaseAgent: Agente recomendado (siempre médico general)
         """
-        message_lower = message.lower()
-        
-        # Palabras clave que sugieren necesidad de triaje urgente
-        urgent_keywords = [
-            'emergencia', 'urgente', 'dolor intenso', 'sangrado',
-            'no puedo respirar', 'desmayo', 'accidente'
-        ]
-        
-        # Si hay indicios de urgencia, usar triaje
-        if any(keyword in message_lower for keyword in urgent_keywords):
-            triage_agent = self.get_agent_by_type(AgentType.TRIAGE_NURSE)
-            if triage_agent:
-                return triage_agent
-        
-        # Por defecto, usar médico general
+        # Siempre usar médico general (único agente disponible)
         gp_agent = self.get_agent_by_type(AgentType.GENERAL_PRACTITIONER)
         return gp_agent or list(self.agents.values())[0]
     
