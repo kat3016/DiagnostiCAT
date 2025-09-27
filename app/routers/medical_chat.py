@@ -631,39 +631,80 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
 
 
 async def handle_classification(conversation_id: str, message: str) -> ChatResponse:
-    """Maneja la clasificación usando Hugging Face"""
+    """
+    Maneja la clasificación usando el nuevo servicio de estructuración + Hugging Face
+    Paso 3: Procesar información recolectada y transformarla en representación estructurada
+    """
     conversation = CONVERSATIONS[conversation_id]
     
     try:
-        # Importar el servicio de clasificación
+        # Importar servicios necesarios
         from app.services.classification_service import classification_model
+        from app.services.data_structuring_service import data_structuring_service
         
-        # Preparar datos para clasificación (incluyendo respuestas específicas)
-        structured_data = {
-            "symptoms": conversation["symptoms_collected"],
-            "chief_complaint": conversation["symptoms_collected"][0] if conversation["symptoms_collected"] else "consulta general",
-            "messages": [msg["content"] for msg in conversation["messages"] if msg["role"] == MessageRole.USER],
-            "questions_answered": conversation["questions_asked"],
-            "specific_answers": conversation.get("specific_answers", []),
-            "preliminary_hypotheses": conversation.get("preliminary_hypotheses", []),
-            "total_information_points": len(conversation["symptoms_collected"]) + len(conversation.get("specific_answers", []))
+        print(f"🔄 PASO 3: Iniciando estructuración de datos médicos...")
+        
+        # PASO 3.1: Estructurar la información recolectada
+        # Usar el nuevo servicio de estructuración de datos
+        structured_medical_data = await data_structuring_service.structure_conversation_data(conversation)
+        
+        print(f"✅ Datos estructurados generados:")
+        print(f"   - Motivo consulta: {structured_medical_data.get('motivo_consulta', 'N/A')}")
+        print(f"   - Síntoma principal: {structured_medical_data.get('enfermedad_actual', {}).get('sintoma_principal', 'N/A')}")
+        print(f"   - Antecedentes: {len(structured_medical_data.get('antecedentes_personales', []))} encontrados")
+        print(f"   - Síntomas asociados: {len(structured_medical_data.get('sintomas_asociados', []))} encontrados")
+        
+        # Guardar datos estructurados en la conversación
+        conversation["structured_medical_data"] = structured_medical_data
+        
+        # PASO 3.2: Convertir a formato compatible con el modelo de clasificación
+        # Preparar datos en formato optimizado para clasificación
+        classification_input = {
+            "chief_complaint": structured_medical_data.get("motivo_consulta", "consulta general"),
+            "symptoms": [
+                structured_medical_data.get("enfermedad_actual", {}).get("sintoma_principal", "")
+            ] + structured_medical_data.get("sintomas_asociados", []),
+            "history": structured_medical_data.get("antecedentes_personales", []) + 
+                     structured_medical_data.get("antecedentes_familiares", []),
+            "current_medications": structured_medical_data.get("medicamentos_actuales", []),
+            "habits": structured_medical_data.get("habitos", {}),
+            "duration": structured_medical_data.get("enfermedad_actual", {}).get("inicio", "no especificado"),
+            "severity": structured_medical_data.get("enfermedad_actual", {}).get("intensidad", "no especificada"),
+            "associated_factors": structured_medical_data.get("factores_agravantes", []) + 
+                               structured_medical_data.get("factores_aliviantes", []),
+            # Información adicional para el modelo
+            "conversation_metadata": {
+                "questions_answered": conversation.get("questions_asked", 0),
+                "specific_answers_count": len(conversation.get("specific_answers", [])),
+                "preliminary_hypotheses": conversation.get("preliminary_hypotheses", []),
+                "processing_method": structured_medical_data.get("metadata", {}).get("processing_method", "unknown")
+            }
         }
         
-        # print(f"🔍 DEBUG: Iniciando clasificación con datos: {structured_data}")
+        print(f"🔍 Enviando datos estructurados al modelo de clasificación...")
         
-        # Ejecutar clasificación
-        classification_result = await classification_model.classify(structured_data)
+        # PASO 3.3: Ejecutar clasificación con datos estructurados
+        classification_result = await classification_model.classify(classification_input)
         
-        # print(f"🔍 DEBUG: Resultado de clasificación: {classification_result}")
+        print(f"✅ Clasificación completada:")
+        print(f"   - Categoría: {classification_result.get('primary_category', 'N/A')}")
+        print(f"   - Confianza: {classification_result.get('confidence_score', 0.0):.2f}")
+        print(f"   - Método: {classification_result.get('method', 'N/A')}")
         
-        # Cambiar estado
+        # PASO 3.4: Guardar resultados completos
         conversation["state"] = ConversationState.CLASSIFICATION_COMPLETE
         conversation["classification_result"] = classification_result
+        conversation["final_structured_data"] = {
+            "structured_medical_data": structured_medical_data,
+            "classification_input": classification_input,
+            "classification_result": classification_result,
+            "processing_timestamp": datetime.now().isoformat()
+        }
         
-        # Crear respuesta con las 3 condiciones más probables
-        response_text = await generate_diagnosis_summary(
-            classification_result, 
-            conversation["symptoms_collected"],
+        # PASO 3.5: Generar respuesta diagnóstica mejorada
+        response_text = await generate_enhanced_diagnosis_summary(
+            structured_medical_data,
+            classification_result,
             conversation.get("preliminary_hypotheses", [])
         )
         
@@ -677,17 +718,18 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
         return ChatResponse(
             response=response_text,
             conversation_id=conversation_id,
-            agent_type="medical_classifier",
+            agent_type="enhanced_medical_classifier",
             confidence_score=classification_result.get("confidence_score", 0.0),
-            severity_assessment=classification_result.get("severity", "MEDIO"),
-            predicted_condition=classification_result.get("predicted_condition", "Análisis completado"),
-            suggestions=[],  # Sin sugerencias
-            follow_up_questions=[],  # Sin preguntas de seguimiento
+            severity_assessment=classification_result.get("urgency_level", "MEDIO"),
+            predicted_condition=classification_result.get("primary_category", "Análisis completado"),
+            suggestions=classification_result.get("recommendations", []),
+            follow_up_questions=[],  # Sin preguntas de seguimiento después de clasificación
             is_diagnosis=True  # Marcar como diagnóstico para mostrar el recuadro especial
         )
         
     except Exception as e:
-        print(f"❌ ERROR en clasificación: {e}")
+        print(f"❌ ERROR en estructuración y clasificación: {e}")
+        print(f"📄 Datos de conversación que causaron error: {conversation.get('conversation_id', 'unknown')}")
         # Fallback a respuesta básica
         return await handle_basic_medical_response(conversation_id, message)
 
@@ -876,6 +918,94 @@ async def delete_conversation(conversation_id: str):
     
     del CONVERSATIONS[conversation_id]
     return {"message": f"Conversación {conversation_id} eliminada exitosamente"}
+
+
+@router.get("/{conversation_id}/structured-data")
+async def get_structured_medical_data(conversation_id: str):
+    """
+    Obtiene los datos médicos estructurados de una conversación
+    Paso 3: Endpoint para acceder a la representación estructurada
+    """
+    if conversation_id not in CONVERSATIONS:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    
+    conversation = CONVERSATIONS[conversation_id]
+    
+    # Verificar si ya se han estructurado los datos
+    if "final_structured_data" not in conversation:
+        # Si no están estructurados, estructurarlos ahora
+        from app.services.data_structuring_service import data_structuring_service
+        
+        try:
+            structured_data = await data_structuring_service.structure_conversation_data(conversation)
+            conversation["structured_medical_data"] = structured_data
+            
+            return {
+                "conversation_id": conversation_id,
+                "structured_data": structured_data,
+                "status": "newly_structured",
+                "format_version": structured_data.get("metadata", {}).get("format_version", "1.0"),
+                "processing_method": structured_data.get("metadata", {}).get("processing_method", "unknown"),
+                "ready_for_classification": True
+            }
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error estructurando datos: {str(e)}"
+            )
+    
+    # Retornar datos ya estructurados
+    final_data = conversation["final_structured_data"]
+    
+    return {
+        "conversation_id": conversation_id,
+        "structured_data": final_data["structured_medical_data"],
+        "classification_input": final_data.get("classification_input", {}),
+        "classification_result": final_data.get("classification_result", {}),
+        "status": "previously_structured",
+        "processing_timestamp": final_data.get("processing_timestamp"),
+        "ready_for_classification": True,
+        "classification_completed": True
+    }
+
+
+@router.post("/{conversation_id}/reprocess-structure")
+async def reprocess_structured_data(conversation_id: str):
+    """
+    Reprocesa la estructuración de datos médicos de una conversación
+    Útil para probar mejoras en el algoritmo de estructuración
+    """
+    if conversation_id not in CONVERSATIONS:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    
+    conversation = CONVERSATIONS[conversation_id]
+    
+    try:
+        from app.services.data_structuring_service import data_structuring_service
+        
+        # Limpiar datos estructurados previos
+        conversation.pop("structured_medical_data", None)
+        conversation.pop("final_structured_data", None)
+        
+        # Reestructurar datos
+        structured_data = await data_structuring_service.structure_conversation_data(conversation)
+        conversation["structured_medical_data"] = structured_data
+        
+        return {
+            "conversation_id": conversation_id,
+            "structured_data": structured_data,
+            "status": "reprocessed",
+            "message": "Datos médicos reestructurados exitosamente",
+            "format_version": structured_data.get("metadata", {}).get("format_version", "1.0"),
+            "processing_method": structured_data.get("metadata", {}).get("processing_method", "unknown")
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reprocesando estructuración: {str(e)}"
+        )
 
 
 async def generate_diagnosis_summary(classification_result: Dict, symptoms_collected: List[str], ai_hypotheses: List[str] = None) -> str:
@@ -1232,3 +1362,300 @@ def generate_adaptive_question(symptoms: List[str], hypotheses: List[Dict], cont
     else:
         # Pregunta final - información adicional importante
         return "¿Hay algún detalle adicional sobre sus síntomas que considere importante mencionar o que no hayamos cubierto?"
+
+
+async def generate_enhanced_diagnosis_summary(
+    structured_data: Dict[str, Any], 
+    classification_result: Dict[str, Any],
+    hypotheses: List[str]
+) -> str:
+    """
+    Genera resumen diagnóstico mejorado usando datos estructurados
+    Paso 3: Presenta los resultados de la representación estructurada
+    """
+    
+    # Extraer información clave de los datos estructurados
+    motivo_consulta = structured_data.get("motivo_consulta", "consulta médica")
+    enfermedad_actual = structured_data.get("enfermedad_actual", {})
+    sintoma_principal = enfermedad_actual.get("sintoma_principal", "síntoma no especificado")
+    inicio = enfermedad_actual.get("inicio", "no especificado")
+    intensidad = enfermedad_actual.get("intensidad", "no especificada")
+    
+    antecedentes = structured_data.get("antecedentes_personales", [])
+    sintomas_asociados = structured_data.get("sintomas_asociados", [])
+    habitos = structured_data.get("habitos", {})
+    
+    # Información de clasificación
+    primary_category = classification_result.get("primary_category", "other")
+    confidence_score = classification_result.get("confidence_score", 0.0)
+    urgency_level = classification_result.get("urgency_level", "medium")
+    recommendations = classification_result.get("recommendations", [])
+    reasoning = classification_result.get("reasoning", "Análisis basado en datos estructurados")
+    
+    # Mapear categorías a nombres en español
+    category_names = {
+        "neurological": "Neurológica",
+        "cardiovascular": "Cardiovascular", 
+        "respiratory": "Respiratoria",
+        "gastrointestinal": "Gastrointestinal",
+        "musculoskeletal": "Musculoesquelética",
+        "dermatological": "Dermatológica",
+        "psychiatric": "Psiquiátrica",
+        "other": "General"
+    }
+    
+    category_display = category_names.get(primary_category, "General")
+    
+    # Generar condiciones probables basadas en la categoría y datos estructurados
+    possible_conditions = await generate_conditions_from_structured_data(
+        structured_data, 
+        classification_result
+    )
+    
+    # Construir el resumen diagnóstico
+    diagnosis_text = f"🔍 **ANÁLISIS MÉDICO COMPLETADO**\n\n"
+    
+    # Resumen de información estructurada
+    diagnosis_text += f"📋 **RESUMEN DE INFORMACIÓN RECOPILADA:**\n"
+    diagnosis_text += f"• **Motivo de consulta:** {motivo_consulta}\n"
+    diagnosis_text += f"• **Síntoma principal:** {sintoma_principal}\n"
+    diagnosis_text += f"• **Duración:** {inicio}\n"
+    
+    if intensidad != "no especificada":
+        diagnosis_text += f"• **Intensidad:** {intensidad}\n"
+    
+    if antecedentes:
+        diagnosis_text += f"• **Antecedentes:** {', '.join(antecedentes[:3])}\n"
+    
+    if sintomas_asociados:
+        diagnosis_text += f"• **Síntomas asociados:** {', '.join(sintomas_asociados[:3])}\n"
+    
+    diagnosis_text += "\n"
+    
+    # Clasificación y análisis
+    diagnosis_text += f"🎯 **CLASIFICACIÓN MÉDICA:**\n"
+    diagnosis_text += f"• **Categoría:** {category_display}\n"
+    diagnosis_text += f"• **Confianza del análisis:** {confidence_score*100:.0f}%\n"
+    diagnosis_text += f"• **Nivel de urgencia:** {urgency_level.upper()}\n\n"
+    
+    # Condiciones más probables
+    diagnosis_text += f"🔬 **CONDICIONES MÁS PROBABLES:**\n\n"
+    
+    for i, condition in enumerate(possible_conditions[:3], 1):
+        diagnosis_text += f"**{i}. {condition['name']}** ({condition['probability']})\n"
+        diagnosis_text += f"   • {condition['description']}\n"
+        if condition.get('indicators'):
+            diagnosis_text += f"   • Indicadores: {', '.join(condition['indicators'][:2])}\n"
+        diagnosis_text += "\n"
+    
+    # Razonamiento del modelo
+    if reasoning and reasoning != "Análisis basado en datos estructurados":
+        diagnosis_text += f"💡 **RAZONAMIENTO CLÍNICO:**\n"
+        diagnosis_text += f"{reasoning}\n\n"
+    
+    # Recomendaciones
+    if recommendations:
+        diagnosis_text += f"📌 **RECOMENDACIONES:**\n"
+        for rec in recommendations[:4]:
+            diagnosis_text += f"• {rec}\n"
+        diagnosis_text += "\n"
+    
+    # Nivel de urgencia y siguientes pasos
+    diagnosis_text += f"🚨 **SIGUIENTES PASOS:**\n"
+    
+    if urgency_level in ["critical", "high"]:
+        diagnosis_text += "• **CONSULTE A UN MÉDICO INMEDIATAMENTE**\n"
+        diagnosis_text += "• Considere acudir a urgencias si los síntomas empeoran\n"
+    elif urgency_level == "medium":
+        diagnosis_text += "• **Programe una cita médica en los próximos 2-3 días**\n"
+        diagnosis_text += "• Monitoree la evolución de sus síntomas\n"
+    else:
+        diagnosis_text += "• **Monitoree síntomas y consulte si empeoran**\n"
+        diagnosis_text += "• Considere una consulta médica de rutina\n"
+    
+    diagnosis_text += "\n"
+    
+    # Disclaimer médico
+    diagnosis_text += "⚠️ **IMPORTANTE:**\n"
+    diagnosis_text += "• Este análisis está basado en IA y datos estructurados\n"
+    diagnosis_text += "• NO reemplaza el diagnóstico médico profesional\n"
+    diagnosis_text += "• Siempre consulte a un médico para diagnóstico definitivo\n"
+    diagnosis_text += f"• Análisis procesado con {structured_data.get('metadata', {}).get('processing_method', 'método avanzado')}\n"
+    
+    return diagnosis_text
+
+
+async def generate_conditions_from_structured_data(
+    structured_data: Dict[str, Any], 
+    classification_result: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    Genera condiciones probables basadas en datos médicos estructurados
+    """
+    
+    enfermedad_actual = structured_data.get("enfermedad_actual", {})
+    sintoma_principal = enfermedad_actual.get("sintoma_principal", "").lower()
+    sintomas_asociados = [s.lower() for s in structured_data.get("sintomas_asociados", [])]
+    primary_category = classification_result.get("primary_category", "other")
+    confidence = classification_result.get("confidence_score", 0.5)
+    
+    # Todas las condiciones posibles organizadas por categoría
+    conditions_by_category = {
+        "neurological": [
+            {
+                "name": "Cefalea tensional",
+                "keywords": ["dolor de cabeza", "cefalea", "tension"],
+                "description": "Dolor de cabeza relacionado con tensión muscular o estrés",
+                "base_probability": 0.75
+            },
+            {
+                "name": "Migraña",
+                "keywords": ["migraña", "jaqueca", "pulsante", "sensibilidad luz"],
+                "description": "Dolor de cabeza vascular con posible sensibilidad",
+                "base_probability": 0.65
+            },
+            {
+                "name": "Cefalea por deshidratación",
+                "keywords": ["deshidratacion", "poco liquido"],
+                "description": "Dolor de cabeza relacionado con falta de hidratación",
+                "base_probability": 0.45
+            }
+        ],
+        "respiratory": [
+            {
+                "name": "Infección respiratoria alta",
+                "keywords": ["tos", "resfriado", "congestion", "garganta"],
+                "description": "Infección en vías respiratorias superiores",
+                "base_probability": 0.70
+            },
+            {
+                "name": "Bronquitis leve",
+                "keywords": ["tos persistente", "flemas", "pecho"],
+                "description": "Inflamación leve de los bronquios",
+                "base_probability": 0.55
+            },
+            {
+                "name": "Alergia respiratoria",
+                "keywords": ["alergia", "estacional", "picazon"],
+                "description": "Reacción alérgica en vías respiratorias",
+                "base_probability": 0.50
+            }
+        ],
+        "cardiovascular": [
+            {
+                "name": "Taquicardia benigna",
+                "keywords": ["palpitaciones", "corazon rapido", "latidos"],
+                "description": "Aumento de frecuencia cardíaca no patológica",
+                "base_probability": 0.65
+            },
+            {
+                "name": "Ansiedad cardíaca",
+                "keywords": ["ansiedad", "estres", "nervios"],
+                "description": "Síntomas cardíacos relacionados con ansiedad",
+                "base_probability": 0.60
+            },
+            {
+                "name": "Arritmia leve",
+                "keywords": ["irregular", "saltitos", "pausas"],
+                "description": "Alteración leve del ritmo cardíaco",
+                "base_probability": 0.45
+            }
+        ],
+        "musculoskeletal": [
+            {
+                "name": "Dolor muscular",
+                "keywords": ["dolor muscular", "contractura", "tension"],
+                "description": "Tensión o fatiga muscular",
+                "base_probability": 0.70
+            },
+            {
+                "name": "Artritis leve",
+                "keywords": ["articular", "articulaciones", "rigidez"],
+                "description": "Inflamación leve de articulaciones",
+                "base_probability": 0.55
+            },
+            {
+                "name": "Lesión deportiva",
+                "keywords": ["ejercicio", "deporte", "sobreesfuerzo"],
+                "description": "Lesión relacionada con actividad física",
+                "base_probability": 0.50
+            }
+        ],
+        "gastrointestinal": [
+            {
+                "name": "Gastritis",
+                "keywords": ["estomago", "acidez", "quemazón"],
+                "description": "Inflamación de la mucosa gástrica",
+                "base_probability": 0.65
+            },
+            {
+                "name": "Indigestión",
+                "keywords": ["digestion", "pesadez", "comida"],
+                "description": "Dificultades en el proceso digestivo",
+                "base_probability": 0.60
+            },
+            {
+                "name": "Síndrome intestinal",
+                "keywords": ["intestino", "diarrea", "estreñimiento"],
+                "description": "Alteración en la función intestinal",
+                "base_probability": 0.50
+            }
+        ]
+    }
+    
+    # Condiciones generales para categorías no específicas
+    general_conditions = [
+        {
+            "name": "Síndrome viral leve",
+            "keywords": ["malestar", "cansancio", "fiebre"],
+            "description": "Proceso viral de baja intensidad",
+            "base_probability": 0.60
+        },
+        {
+            "name": "Fatiga o estrés",
+            "keywords": ["cansancio", "estres", "agotamiento"],
+            "description": "Síntomas relacionados con cansancio o tensión",
+            "base_probability": 0.55
+        },
+        {
+            "name": "Malestar general",
+            "keywords": ["general", "inespecifico"],
+            "description": "Síntomas inespecíficos que requieren evaluación",
+            "base_probability": 0.45
+        }
+    ]
+    
+    # Seleccionar condiciones relevantes
+    relevant_conditions = conditions_by_category.get(primary_category, general_conditions)
+    
+    # Calcular probabilidades basadas en coincidencias de palabras clave
+    all_symptoms_text = f"{sintoma_principal} {' '.join(sintomas_asociados)}"
+    
+    scored_conditions = []
+    for condition in relevant_conditions:
+        score = condition["base_probability"]
+        
+        # Bonificación por coincidencias de palabras clave
+        keyword_matches = sum(1 for keyword in condition["keywords"] 
+                            if keyword in all_symptoms_text)
+        
+        if keyword_matches > 0:
+            score += keyword_matches * 0.1  # Bonificación por coincidencia
+        
+        # Ajustar por confianza del modelo
+        score *= confidence
+        
+        # Agregar indicadores encontrados
+        indicators = [kw for kw in condition["keywords"] if kw in all_symptoms_text]
+        
+        scored_conditions.append({
+            "name": condition["name"],
+            "probability": f"{min(score * 100, 95):.0f}%",
+            "description": condition["description"],
+            "indicators": indicators or ["Análisis basado en categoría médica"]
+        })
+    
+    # Ordenar por probabilidad y retornar top 3
+    scored_conditions.sort(key=lambda x: float(x["probability"].rstrip('%')), reverse=True)
+    
+    return scored_conditions[:3]
