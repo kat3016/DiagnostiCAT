@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './ChatInterface.css';
 
-const ChatInterface = ({ conversationId, onNewConversation }) => {
+const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -50,6 +50,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
   // Reiniciar el chat cuando conversationId cambia a null
   useEffect(() => {
     if (conversationId === null) {
+      console.log('Reiniciando mensajes del chat...');
       setMessages([
         {
           role: 'assistant',
@@ -59,6 +60,15 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
         }
       ]);
       setIsConsentDenied(false); // Resetear estado de consentimiento denegado
+      setInputMessage(''); // Limpiar también el input
+      setIsLoading(false); // Asegurar que no esté en estado de carga
+      
+      // Enfocar el input después de reiniciar
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 300);
     }
   }, [conversationId]);
 
@@ -161,9 +171,18 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
   };
 
   const restartConversation = () => {
-    setIsConsentDenied(false);
-    setInputMessage('');
-    onNewConversation(null); // Esto activará el useEffect que resetea los mensajes
+    console.log('Reiniciando conversación desde chat bloqueado...');
+    
+    // Si tenemos una función de reinicio desde el padre, la usamos
+    if (onRestart) {
+      onRestart();
+    } else {
+      // Fallback: usar el método anterior
+      setIsConsentDenied(false);
+      setInputMessage('');
+      setIsLoading(false);
+      onNewConversation(null);
+    }
   };
 
   const getSeverityColor = (severity) => {

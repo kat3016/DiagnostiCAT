@@ -5,10 +5,13 @@ import './App.css';
 function App() {
   const [conversationId, setConversationId] = useState(null);
   const [error, setError] = useState(null);
+  const [chatKey, setChatKey] = useState(0); // Key para forzar re-render del chat
 
   const handleRestart = () => {
+    console.log('Reiniciando desde el header...');
     setConversationId(null);
     setError(null);
+    setChatKey(prev => prev + 1); // Forzar re-render completo del chat
   };
 
   return (
@@ -36,8 +39,10 @@ function App() {
         )}
 
         <ChatInterface 
+          key={chatKey}
           conversationId={conversationId}
           onNewConversation={setConversationId}
+          onRestart={handleRestart}
         />
       </div>
 
