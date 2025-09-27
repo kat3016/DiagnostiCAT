@@ -148,13 +148,6 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
 
   return (
     <div className="chat-container">
-      <div className="chat-header">
-        <div className="chat-header-info">
-          <h1>🏥 DiagnostiCAT - Asistente Médico</h1>
-          <p>Consulta médica asistida por inteligencia artificial</p>
-        </div>
-      </div>
-
       <div className="chat-messages">
         {messages.map((message, index) => (
           <div key={index} className={`message ${message.role} ${message.isError ? 'error' : ''} ${message.isWelcome ? 'welcome' : ''}`}>
@@ -295,10 +288,6 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
           >
             {isLoading ? '...' : '→'}
           </button>
-        </div>
-        
-        <div className="chat-disclaimer">
-          ⚠️ Esta es una herramienta de orientación. En emergencias, llame al 123.
         </div>
       </div>
     </div>

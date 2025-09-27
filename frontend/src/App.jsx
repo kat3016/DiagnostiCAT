@@ -21,7 +21,7 @@ function App() {
             <span>Asistencia Médica IA</span>
           </div>
           <button onClick={handleRestart} className="btn-restart">
-            🔄 Reiniciar
+            Reiniciar Conversación
           </button>
         </div>
       </div>
@@ -46,6 +46,7 @@ function App() {
         <div className="footer-content">
           <div className="footer-info">
             <p>🔒 Información confidencial | 📞 Emergencias: 123 | ⚠️ No reemplaza consulta médica</p>
+            <p>🤖 Asistente médico basado en Inteligencia Artificial</p>
           </div>
         </div>
       </div>
