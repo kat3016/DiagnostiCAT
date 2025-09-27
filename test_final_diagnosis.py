@@ -34,11 +34,14 @@ async def test_final_diagnosis():
         "síntoma general: no"
     ]
     
-    # Simular resultado de clasificación
+    # Simular resultado de clasificación de Hugging Face
     classification_result = {
-        "predicted_condition": "Dolor abdominal agudo",
-        "confidence": 0.85,
-        "severity": "MEDIO"
+        "primary_category": "gastrointestinal",
+        "confidence_score": 0.87,
+        "secondary_categories": ["musculoskeletal", "other"],
+        "method": "huggingface",
+        "model_used": "facebook/bart-large-mnli",
+        "urgency_level": "medium"
     }
     
     try:
