@@ -16,6 +16,8 @@ from app.routers import medical_chat
 # from app.core.database import create_tables  # Comentado temporalmente
 # from app.core.validators import validate_llm_configuration, LLMConfigurationError, get_configuration_status  # Comentado temporalmente
 
+from mangum import Mangum 
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -118,6 +120,8 @@ app.include_router(
 #     prefix="/api/v1/flow",
 #     tags=["Flujo de Anamnesis Conversacional"]
 # )
+
+handler = Mangum(app)
 
 
 if __name__ == "__main__":
