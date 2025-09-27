@@ -88,10 +88,10 @@ PREGUNTAS ESPECÍFICAS PARA MODELO DE CLASIFICACIÓN:
 5. [Pregunta específica 5]
 """
         
-        print(f"🤖 Enviando prompt al agente {provider.upper()}")
+        print(f"🤖 Generando preguntas con {provider.upper()}...")
         response = llm.invoke(prompt)
         
-        print(f"✅ Respuesta recibida de {provider.upper()}:")
+        print(f"✅ Preguntas generadas exitosamente por {provider.upper()}")
         
         return {
             "success": True,
