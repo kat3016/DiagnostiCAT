@@ -633,7 +633,11 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
         conversation["classification_result"] = classification_result
         
         # Crear respuesta con las 3 condiciones más probables
-        response_text = await generate_diagnosis_summary(classification_result, conversation["symptoms_collected"])
+        response_text = await generate_diagnosis_summary(
+            classification_result, 
+            conversation["symptoms_collected"],
+            conversation.get("preliminary_hypotheses", [])
+        )
         
         # Registrar respuesta
         conversation["messages"].append({
@@ -846,49 +850,86 @@ async def delete_conversation(conversation_id: str):
     return {"message": f"Conversación {conversation_id} eliminada exitosamente"}
 
 
-async def generate_diagnosis_summary(classification_result: Dict, symptoms_collected: List[str]) -> str:
+async def generate_diagnosis_summary(classification_result: Dict, symptoms_collected: List[str], ai_hypotheses: List[str] = None) -> str:
     """Genera un resumen de diagnóstico con las 3 condiciones más probables"""
     
-    # Condiciones predeterminadas basadas en síntomas comunes
+    # Usar las hipótesis de la IA si están disponibles
     possible_conditions = []
     
-    # Extraer información de los síntomas (ahora incluyendo respuestas específicas)
+    # Siempre definir all_symptoms para uso posterior
     all_symptoms = " ".join(symptoms_collected).lower()
     
-    if "dolor" in all_symptoms and ("cabeza" in all_symptoms or "neurological" in all_symptoms):
-        possible_conditions = [
-            {"name": "Cefalea tensional", "probability": "75%", "description": "Dolor de cabeza por tensión o estrés"},
-            {"name": "Migraña leve", "probability": "20%", "description": "Dolor de cabeza vascular con posible sensibilidad"},
-            {"name": "Cefalea por deshidratación", "probability": "5%", "description": "Dolor de cabeza relacionado con falta de hidratación"}
-        ]
-    elif "fiebre" in all_symptoms or "temperatura" in all_symptoms:
-        possible_conditions = [
-            {"name": "Infección viral", "probability": "60%", "description": "Proceso infeccioso de origen viral"},
-            {"name": "Infección bacteriana leve", "probability": "30%", "description": "Proceso infeccioso bacteriano de intensidad leve"},
-            {"name": "Reacción inflamatoria", "probability": "10%", "description": "Respuesta inflamatoria del organismo"}
-        ]
-    elif "tos" in all_symptoms:
-        possible_conditions = [
-            {"name": "Infección respiratoria alta", "probability": "65%", "description": "Infección en vías respiratorias superiores"},
-            {"name": "Bronquitis leve", "probability": "25%", "description": "Inflamación leve de los bronquios"},
-            {"name": "Alergia respiratoria", "probability": "10%", "description": "Reacción alérgica en vías respiratorias"}
-        ]
-    elif "dolor" in all_symptoms:
-        possible_conditions = [
-            {"name": "Dolor muscular", "probability": "50%", "description": "Tensión o fatiga muscular"},
-            {"name": "Dolor articular", "probability": "35%", "description": "Molestias en articulaciones"},
-            {"name": "Dolor neuropático", "probability": "15%", "description": "Dolor relacionado con nervios"}
-        ]
+    if ai_hypotheses and len(ai_hypotheses) > 0:
+        print(f"✅ Usando hipótesis de la IA: {len(ai_hypotheses)} hipótesis encontradas")
+        
+        # Convertir las hipótesis de la IA a formato de condiciones
+        for i, hypothesis in enumerate(ai_hypotheses[:3]):  # Tomar máximo 3
+            # Extraer el nombre de la condición (antes del primer ":")
+            if "**" in hypothesis:
+                # Formato: "**Nombre**: Descripción"
+                parts = hypothesis.split("**")
+                if len(parts) >= 3:
+                    condition_name = parts[1].strip()
+                    description = parts[2].split(":", 1)[-1].strip() if ":" in parts[2] else parts[2].strip()
+                else:
+                    condition_name = hypothesis[:50]
+                    description = hypothesis
+            elif ":" in hypothesis:
+                # Formato: "Nombre: Descripción"
+                parts = hypothesis.split(":", 1)
+                condition_name = parts[0].strip()
+                description = parts[1].strip()
+            else:
+                condition_name = hypothesis[:50] + "..." if len(hypothesis) > 50 else hypothesis
+                description = hypothesis
+            
+            # Asignar probabilidades decrecientes
+            probabilities = ["alta (70-85%)", "media (15-25%)", "baja (5-15%)"]
+            probability = probabilities[i] if i < len(probabilities) else "baja (5-15%)"
+            
+            possible_conditions.append({
+                "name": condition_name,
+                "probability": probability,
+                "description": description
+            })
     else:
-        # Condiciones generales
-        possible_conditions = [
-            {"name": "Malestar general", "probability": "40%", "description": "Síntomas inespecíficos que requieren evaluación"},
-            {"name": "Síndrome viral leve", "probability": "35%", "description": "Posible proceso viral de baja intensidad"},
-            {"name": "Fatiga o estrés", "probability": "25%", "description": "Síntomas relacionados con cansancio o tensión"}
-        ]
+        print("⚠️ No se encontraron hipótesis de IA, usando condiciones por defecto")
+        # Fallback a condiciones predeterminadas basadas en síntomas comunes
+        
+        if "dolor" in all_symptoms and ("cabeza" in all_symptoms or "neurological" in all_symptoms):
+            possible_conditions = [
+                {"name": "Cefalea tensional", "probability": "75%", "description": "Dolor de cabeza por tensión o estrés"},
+                {"name": "Migraña leve", "probability": "20%", "description": "Dolor de cabeza vascular con posible sensibilidad"},
+                {"name": "Cefalea por deshidratación", "probability": "5%", "description": "Dolor de cabeza relacionado con falta de hidratación"}
+            ]
+        elif "fiebre" in all_symptoms or "temperatura" in all_symptoms:
+            possible_conditions = [
+                {"name": "Infección viral", "probability": "60%", "description": "Proceso infeccioso de origen viral"},
+                {"name": "Infección bacteriana leve", "probability": "30%", "description": "Proceso infeccioso bacteriano de intensidad leve"},
+                {"name": "Reacción inflamatoria", "probability": "10%", "description": "Respuesta inflamatoria del organismo"}
+            ]
+        elif "tos" in all_symptoms:
+            possible_conditions = [
+                {"name": "Infección respiratoria alta", "probability": "65%", "description": "Infección en vías respiratorias superiores"},
+                {"name": "Bronquitis leve", "probability": "25%", "description": "Inflamación leve de los bronquios"},
+                {"name": "Alergia respiratoria", "probability": "10%", "description": "Reacción alérgica en vías respiratorias"}
+            ]
+        elif "dolor" in all_symptoms:
+            possible_conditions = [
+                {"name": "Dolor muscular", "probability": "50%", "description": "Tensión o fatiga muscular"},
+                {"name": "Dolor articular", "probability": "35%", "description": "Molestias en articulaciones"},
+                {"name": "Dolor neuropático", "probability": "15%", "description": "Dolor relacionado con nervios"}
+            ]
+        else:
+            # Condiciones generales
+            possible_conditions = [
+                {"name": "Malestar general", "probability": "40%", "description": "Síntomas inespecíficos que requieren evaluación"},
+                {"name": "Síndrome viral leve", "probability": "35%", "description": "Posible proceso viral de baja intensidad"},
+                {"name": "Fatiga o estrés", "probability": "25%", "description": "Síntomas relacionados con cansancio o tensión"}
+            ]
     
-    # Usar datos de clasificación si están disponibles
-    if classification_result and "predicted_condition" in classification_result:
+    # Usar datos de clasificación si están disponibles (solo si no tenemos hipótesis de IA)
+    if not ai_hypotheses and classification_result and "predicted_condition" in classification_result:
         main_condition = classification_result["predicted_condition"]
         confidence = classification_result.get("confidence", 0.5) * 100
         possible_conditions[0] = {
@@ -896,6 +937,18 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
             "probability": f"{confidence:.0f}%",
             "description": f"Condición identificada por análisis de síntomas"
         }
+    
+    # Si tenemos hipótesis de IA, también intentar usar datos de clasificación como refinamiento
+    elif ai_hypotheses and classification_result and "predicted_condition" in classification_result:
+        main_condition = classification_result["predicted_condition"]
+        confidence = classification_result.get("confidence", 0.5) * 100
+        
+        # Verificar si la condición clasificada coincide con alguna hipótesis de IA
+        for condition in possible_conditions:
+            if main_condition.lower() in condition["name"].lower() or condition["name"].lower() in main_condition.lower():
+                condition["probability"] = f"muy alta ({confidence:.0f}%)"
+                condition["description"] += f" - Confirmada por análisis de clasificación"
+                break
     
     # Generar texto del diagnóstico
     diagnosis_text = "🏥 **DIAGNÓSTICO PRELIMINAR**\n\n"
