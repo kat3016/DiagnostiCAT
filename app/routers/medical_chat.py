@@ -471,11 +471,18 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
             # Preparar datos de la entrevista inicial para el agente
             interview_summary = format_interview_data_for_agent(conversation["symptoms_collected"])
             
-            # Crear instancia del crew y ejecutar análisis de preguntas específicas
-            crew = AnamnesisConversacionalCrew()
+            # 🧪 USAR AGENTE HÍBRIDO (NVIDIA/OpenAI)
+            from app.crew.hybrid_agent import generate_questions_hybrid
             
-            # Ejecutar el análisis usando el método run_analysis_only
-            analysis_result = crew.run_analysis_only({"interview_data": interview_summary})
+            print(f"🧪 PROBANDO AGENTE HÍBRIDO (NVIDIA/OpenAI)...")
+            hybrid_result = generate_questions_hybrid(interview_summary)
+            
+            if hybrid_result["success"]:
+                print(f"✅ AGENTE HÍBRIDO FUNCIONÓ CON {hybrid_result['provider'].upper()}!")
+                analysis_result = hybrid_result["content"]
+            else:
+                print(f"❌ AGENTE HÍBRIDO FALLÓ, ERROR CRÍTICO...")
+                raise Exception(f"Todos los agentes fallaron: {hybrid_result['error']}")
             
             # 🐛 DEBUG: Ver qué devuelve realmente el agente
             print(f"🤖 AGENTE RESULTADO CRUDO:")

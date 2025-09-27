@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # NVIDIA Nemotron
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
     NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    NEMOTRON_MODEL: str = os.getenv("NEMOTRON_MODEL", "nvidia/nemotron-4-340b-instruct")
+    NEMOTRON_MODEL: str = os.getenv("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
     
     # Configuración de modelo
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "nemotron")  # nemotron, openai, fallback

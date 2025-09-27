@@ -19,7 +19,7 @@ def get_nemotron_llm():
         api_key=settings.NVIDIA_API_KEY,
         base_url=settings.NVIDIA_BASE_URL,
         temperature=settings.LLM_TEMPERATURE,
-        max_tokens=settings.LLM_MAX_TOKENS,
+        # max_tokens no es compatible con NVIDIA API
         timeout=60,
         max_retries=3
     )
@@ -27,11 +27,11 @@ def get_nemotron_llm():
 
 def configure_crewai_llm():
     """
-    Configura las variables de entorno para que CrewAI use Nemotron
+    Configura las variables de entorno para que CrewAI use Nemotron  
     """
     # Configurar variables de entorno que CrewAI puede usar
     os.environ['OPENAI_API_KEY'] = settings.NVIDIA_API_KEY  # CrewAI usa esta variable
-    os.environ['OPENAI_API_BASE'] = settings.NVIDIA_BASE_URL
+    os.environ['OPENAI_BASE_URL'] = settings.NVIDIA_BASE_URL  # Cambié OPENAI_API_BASE por OPENAI_BASE_URL
     os.environ['OPENAI_MODEL_NAME'] = settings.NEMOTRON_MODEL
     
     # Variables específicas de NVIDIA
