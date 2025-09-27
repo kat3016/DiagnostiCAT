@@ -51,10 +51,10 @@ async def chat_with_agent(request: ChatRequest):
     conversation = CONVERSATIONS[conversation_id]
     user_message = request.message.lower().strip()
     
-    # Debug: Imprimir estado de la conversación (comentado para producción)
-    # print(f"🔍 DEBUG: Conversation state: {conversation['state']}")
-    # print(f"🔍 DEBUG: User message: '{request.message}'")
-    # print(f"🔍 DEBUG: User message lower: '{user_message}'")
+    # Debug: Imprimir estado de la conversación
+    print(f"🔍 DEBUG: Conversation state: {conversation['state']}")
+    print(f"🔍 DEBUG: User message: '{request.message}'")
+    print(f"🔍 DEBUG: User message lower: '{user_message}'")
     
     # Registrar mensaje del usuario
     conversation["messages"].append({
@@ -66,7 +66,7 @@ async def chat_with_agent(request: ChatRequest):
     try:
         # Manejar consentimiento
         if conversation["state"] == ConversationState.AWAITING_CONSENT:
-            # print(f"🔍 DEBUG: Handling consent...")
+            print(f"🔍 DEBUG: Handling consent...")
             return await handle_consent(conversation_id, user_message, request.message)
         
         # Manejar recolección de síntomas
@@ -274,20 +274,24 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     conversation["symptoms_collected"].extend(extracted_info)
     conversation["questions_asked"] += 1
     
-    # print(f"🔍 DEBUG: Questions asked: {conversation['questions_asked']}/{conversation['max_questions']}")
-    # print(f"🔍 DEBUG: Symptoms collected: {conversation['symptoms_collected']}")
+    print(f"🔍 DEBUG: Questions asked: {conversation['questions_asked']}/{conversation['max_questions']}")
+    print(f"🔍 DEBUG: Symptoms collected: {conversation['symptoms_collected']}")
+    print(f"🔍 DEBUG: Current message: {message}")
     
     # Determinar si tenemos suficiente información para clasificar
     if (conversation["questions_asked"] >= conversation["min_questions"] and 
         len(conversation["symptoms_collected"]) >= 2) or \
        conversation["questions_asked"] >= conversation["max_questions"]:
         
+        print(f"🔍 DEBUG: Moving to classification phase")
         # Cambiar estado y proceder con clasificación
         conversation["state"] = ConversationState.READY_FOR_CLASSIFICATION
         return await handle_classification(conversation_id, message)
     
     # Generar siguiente pregunta
     next_question = generate_next_question(conversation["symptoms_collected"], conversation["questions_asked"])
+    
+    print(f"🔍 DEBUG: Generated next question: {next_question}")
     
     conversation["messages"].append({
         "role": MessageRole.ASSISTANT,
