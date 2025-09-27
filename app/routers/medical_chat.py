@@ -1017,22 +1017,51 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
         if possible_conditions:
             possible_conditions[0]["description"] += f" - Modelo Hugging Face: {hf_confidence:.1f}% de confianza en análisis"
     
+    # Ordenar las condiciones por probabilidad (de mayor a menor)
+    def extract_probability(condition):
+        prob_str = condition['probability'].replace('%', '')
+        try:
+            return float(prob_str)
+        except:
+            return 0.0
+    
+    sorted_conditions = sorted(possible_conditions[:3], key=extract_probability, reverse=True)
+    
     # Generar texto del análisis
     diagnosis_text = "Con base en la información que me ha proporcionado y el análisis realizado, estas son las probabilidades estimadas:\n\n"
     
-    for i, condition in enumerate(possible_conditions[:3], 1):
+    for i, condition in enumerate(sorted_conditions, 1):
         diagnosis_text += f"• **{condition['name']}**: {condition['probability']}\n"
     
-    diagnosis_text += f"\nEs importante aclarar que estas cifras son estimaciones estadísticas generadas por un modelo de inteligencia artificial y no constituyen un diagnóstico médico.\n\n"
+    diagnosis_text += f"\n**Reflexión sobre su consulta:**\n"
+    diagnosis_text += f"Agradezco la confianza que ha depositado en este sistema al compartir información tan personal sobre su salud. Entiendo que cuando experimentamos síntomas que nos preocupan, es natural buscar respuestas y orientación. "
     
-    # Agregar recomendación personalizada basada en los síntomas
+    # Agregar comentario empático basado en síntomas
     all_symptoms = " ".join(symptoms_collected).lower()
-    if any(word in all_symptoms for word in ['dolor', 'intenso', 'fuerte', '8', '9', '10']):
-        diagnosis_text += "Si los síntomas persisten o se intensifican, le recomiendo buscar atención médica inmediata o acudir a un servicio de urgencias."
-    elif any(word in all_symptoms for word in ['fiebre', 'temperatura', 'escalofríos']):
-        diagnosis_text += "Si presenta fiebre alta o los síntomas empeoran, le recomiendo consultar con un médico lo antes posible."
+    if any(word in all_symptoms for word in ['dolor', 'intenso', 'fuerte']):
+        diagnosis_text += f"Comprendo que lidiar con dolor puede ser una experiencia muy desafiante y que afecta no solo su bienestar físico, sino también emocional. "
+    elif any(word in all_symptoms for word in ['preocup', 'ansie', 'nervios']):
+        diagnosis_text += f"Reconozco que los síntomas que está experimentando pueden generar ansiedad e incertidumbre. "
     else:
-        diagnosis_text += "Le recomiendo consultar con un médico para una evaluación más detallada y obtener el tratamiento adecuado."
+        diagnosis_text += f"Entiendo que cualquier cambio en nuestro bienestar puede generar inquietud. "
+    
+    diagnosis_text += f"Mi objetivo es brindarle información útil que complemente, mas no reemplace, la atención médica profesional.\n\n"
+    diagnosis_text += f"Es importante aclarar que estas cifras son estimaciones estadísticas generadas por un modelo de inteligencia artificial y no constituyen un diagnóstico médico.\n\n"
+    
+    # Agregar recomendación personalizada y humana basada en los síntomas
+    diagnosis_text += f"**Recomendaciones para su cuidado:**\n"
+    
+    if any(word in all_symptoms for word in ['dolor', 'intenso', 'fuerte', '8', '9', '10']):
+        diagnosis_text += f"Dado el nivel de intensidad de sus síntomas, es fundamental que busque atención médica sin demora. Su bienestar es prioritario, y un profesional de la salud podrá realizar un examen físico completo y los estudios necesarios para brindarle el cuidado que merece. "
+        diagnosis_text += f"No dude en acudir a un servicio de urgencias si los síntomas se intensifican."
+    elif any(word in all_symptoms for word in ['fiebre', 'temperatura', 'escalofríos']):
+        diagnosis_text += f"Los síntomas que presenta sugieren la necesidad de una evaluación médica pronta. Le recomiendo contactar a su médico de cabecera o acudir a un centro de salud para recibir la atención adecuada. "
+        diagnosis_text += f"Mientras tanto, manténgase hidratado y descanse lo suficiente."
+    else:
+        diagnosis_text += f"Aunque sus síntomas pueden parecer menores, cada persona es única y merece atención personalizada. Le sugiero programar una cita con un profesional de la salud quien podrá realizar una evaluación integral. "
+        diagnosis_text += f"Recuerde que cuidar de su salud es una inversión en su calidad de vida."
+    
+    diagnosis_text += f"\n\nFinalmente, quiero recordarle que usted conoce su cuerpo mejor que nadie. Si algo no se siente bien o si tiene dudas adicionales, no dude en buscar una segunda opinión médica. Su salud y tranquilidad son invaluables."
     
     return diagnosis_text
 
