@@ -19,8 +19,9 @@ class ConversationState:
     """Estados de la conversación"""
     AWAITING_CONSENT = "awaiting_consent"
     CONSENT_GIVEN = "consent_given"
-    INTERVIEWING = "interviewing"
-    ANALYZING = "analyzing"
+    COLLECTING_SYMPTOMS = "collecting_symptoms"
+    READY_FOR_CLASSIFICATION = "ready_for_classification"
+    CLASSIFICATION_COMPLETE = "classification_complete"
     COMPLETED = "completed"
 
 
@@ -36,6 +37,10 @@ async def chat_with_agent(request: ChatRequest):
             "messages": [],
             "consent_given": False,
             "interview_data": {},
+            "symptoms_collected": [],
+            "questions_asked": 0,
+            "min_questions": 3,  # Mínimo de preguntas antes de clasificar
+            "max_questions": 7,  # Máximo de preguntas
             "created_at": datetime.now()
         }
     else:
@@ -45,6 +50,11 @@ async def chat_with_agent(request: ChatRequest):
     
     conversation = CONVERSATIONS[conversation_id]
     user_message = request.message.lower().strip()
+    
+    # Debug: Imprimir estado de la conversación (comentado para producción)
+    # print(f"🔍 DEBUG: Conversation state: {conversation['state']}")
+    # print(f"🔍 DEBUG: User message: '{request.message}'")
+    # print(f"🔍 DEBUG: User message lower: '{user_message}'")
     
     # Registrar mensaje del usuario
     conversation["messages"].append({
@@ -56,11 +66,20 @@ async def chat_with_agent(request: ChatRequest):
     try:
         # Manejar consentimiento
         if conversation["state"] == ConversationState.AWAITING_CONSENT:
+            # print(f"🔍 DEBUG: Handling consent...")
             return await handle_consent(conversation_id, user_message, request.message)
         
-        # Manejar conversación normal después del consentimiento
-        elif conversation["state"] == ConversationState.CONSENT_GIVEN:
-            return await handle_medical_conversation(conversation_id, request.message)
+        # Manejar recolección de síntomas
+        elif conversation["state"] == ConversationState.COLLECTING_SYMPTOMS:
+            return await handle_symptom_collection(conversation_id, request.message)
+        
+        # Manejar clasificación y resultados
+        elif conversation["state"] == ConversationState.READY_FOR_CLASSIFICATION:
+            return await handle_classification(conversation_id, request.message)
+        
+        # Manejar conversación después de clasificación
+        elif conversation["state"] == ConversationState.CLASSIFICATION_COMPLETE:
+            return await handle_post_classification_conversation(conversation_id, request.message)
         
         else:
             # Estados más avanzados del flujo
@@ -92,36 +111,43 @@ async def handle_consent(conversation_id: str, user_message_lower: str, original
     """Maneja la fase de consentimiento"""
     conversation = CONVERSATIONS[conversation_id]
     
+    # Detectar consentimiento negativo PRIMERO (para evitar conflictos)
+    negative_patterns = [
+        'no acepto', 'no', 'niego', 'rechazo', 'rechaza', 'no autorizo',
+        'no estoy de acuerdo', 'en desacuerdo'
+    ]
+    
     # Detectar consentimiento positivo
     positive_patterns = [
-        r'sí\s+acepto', r'si\s+acepto', r'acepto', r'sí', r'si', r'yes', r'okay', r'ok', 
-        r'estoy\s+de\s+acuerdo', r'de\s+acuerdo', r'conforme', r'autorizo'
+        'si acepto', 'sí acepto', 'acepto', 'si', 'sí', 'yes', 'ok', 'okay',
+        'estoy de acuerdo', 'de acuerdo', 'conforme', 'autorizo'
     ]
     
-    # Detectar consentimiento negativo
-    negative_patterns = [
-        r'no\s+acepto', r'no', r'niego', r'rechaz[oa]', r'no\s+autorizo', 
-        r'no\s+estoy\s+de\s+acuerdo', r'en\s+desacuerdo'
-    ]
-    
-    consent_given = False
-    for pattern in positive_patterns:
-        if re.search(pattern, user_message_lower):
-            consent_given = True
-            break
-    
+    # Verificar patrones negativos PRIMERO
     consent_denied = False
     for pattern in negative_patterns:
-        if re.search(pattern, user_message_lower):
+        if pattern in user_message_lower:  # Usar 'in' en lugar de regex
+            # print(f"🔍 DEBUG: Matched negative pattern: {pattern}")
             consent_denied = True
             break
     
+    # Solo verificar patrones positivos si no hay negativo
+    consent_given = False
+    if not consent_denied:
+        for pattern in positive_patterns:
+            if pattern in user_message_lower:  # Usar 'in' en lugar de regex
+                # print(f"🔍 DEBUG: Matched positive pattern: {pattern}")
+                consent_given = True
+                break
+    
+    # print(f"🔍 DEBUG: consent_given={consent_given}, consent_denied={consent_denied}")
+    
     if consent_given:
         # Consentimiento otorgado
-        conversation["state"] = ConversationState.CONSENT_GIVEN
+        conversation["state"] = ConversationState.COLLECTING_SYMPTOMS
         conversation["consent_given"] = True
         
-        response_text = "¡Perfecto! Gracias por otorgar su consentimiento. Ahora puedo ayudarle con su consulta médica. Por favor, describa sus síntomas o la razón de su consulta."
+        response_text = "¡Perfecto! Gracias por otorgar su consentimiento. Ahora puedo ayudarle con su consulta médica.\n\nVoy a hacerle algunas preguntas para entender mejor su situación. ¿Cuál es el síntoma principal o la razón de su consulta?"
         
         conversation["messages"].append({
             "role": MessageRole.ASSISTANT,
@@ -239,6 +265,226 @@ async def handle_medical_conversation(conversation_id: str, message: str) -> Cha
         )
 
 
+async def handle_symptom_collection(conversation_id: str, message: str) -> ChatResponse:
+    """Maneja la recolección progresiva de síntomas"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    # Analizar el mensaje y extraer información relevante
+    extracted_info = extract_medical_info(message)
+    conversation["symptoms_collected"].extend(extracted_info)
+    conversation["questions_asked"] += 1
+    
+    # print(f"🔍 DEBUG: Questions asked: {conversation['questions_asked']}/{conversation['max_questions']}")
+    # print(f"🔍 DEBUG: Symptoms collected: {conversation['symptoms_collected']}")
+    
+    # Determinar si tenemos suficiente información para clasificar
+    if (conversation["questions_asked"] >= conversation["min_questions"] and 
+        len(conversation["symptoms_collected"]) >= 2) or \
+       conversation["questions_asked"] >= conversation["max_questions"]:
+        
+        # Cambiar estado y proceder con clasificación
+        conversation["state"] = ConversationState.READY_FOR_CLASSIFICATION
+        return await handle_classification(conversation_id, message)
+    
+    # Generar siguiente pregunta
+    next_question = generate_next_question(conversation["symptoms_collected"], conversation["questions_asked"])
+    
+    conversation["messages"].append({
+        "role": MessageRole.ASSISTANT,
+        "content": next_question,
+        "timestamp": datetime.now()
+    })
+    
+    return ChatResponse(
+        response=next_question,
+        conversation_id=conversation_id,
+        agent_type="symptom_collector",
+        confidence_score=0.8,
+        severity_assessment="BAJO",
+        suggestions=[],
+        follow_up_questions=[]
+    )
+
+
+async def handle_classification(conversation_id: str, message: str) -> ChatResponse:
+    """Maneja la clasificación usando Hugging Face"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    try:
+        # Importar el servicio de clasificación
+        from app.services.classification_service import classification_model
+        
+        # Preparar datos para clasificación
+        structured_data = {
+            "symptoms": conversation["symptoms_collected"],
+            "chief_complaint": conversation["symptoms_collected"][0] if conversation["symptoms_collected"] else "consulta general",
+            "messages": [msg["content"] for msg in conversation["messages"] if msg["role"] == MessageRole.USER],
+            "questions_answered": conversation["questions_asked"]
+        }
+        
+        # print(f"🔍 DEBUG: Iniciando clasificación con datos: {structured_data}")
+        
+        # Ejecutar clasificación
+        classification_result = await classification_model.classify(structured_data)
+        
+        # print(f"🔍 DEBUG: Resultado de clasificación: {classification_result}")
+        
+        # Cambiar estado
+        conversation["state"] = ConversationState.CLASSIFICATION_COMPLETE
+        conversation["classification_result"] = classification_result
+        
+        # Crear respuesta con diagnóstico
+        response_text = f"Basándome en la información que me ha proporcionado, he realizado un análisis preliminar de su consulta."
+        
+        # Registrar respuesta
+        conversation["messages"].append({
+            "role": MessageRole.ASSISTANT,
+            "content": response_text,
+            "timestamp": datetime.now()
+        })
+        
+        return ChatResponse(
+            response=response_text,
+            conversation_id=conversation_id,
+            agent_type="medical_classifier",
+            confidence_score=classification_result.get("confidence_score", 0.0),
+            severity_assessment=classification_result.get("severity", "MEDIO"),
+            predicted_condition=classification_result.get("category", "Condición no determinada"),
+            suggestions=classification_result.get("recommendations", []),
+            follow_up_questions=[
+                "¿Tiene algún medicamento que esté tomando actualmente?",
+                "¿Ha tenido este tipo de síntomas antes?",
+                "¿Le gustaría más información sobre esta condición?"
+            ],
+            is_diagnosis=True  # Marcar como diagnóstico para mostrar el recuadro especial
+        )
+        
+    except Exception as e:
+        print(f"❌ ERROR en clasificación: {e}")
+        # Fallback a respuesta básica
+        return await handle_basic_medical_response(conversation_id, message)
+
+
+async def handle_post_classification_conversation(conversation_id: str, message: str) -> ChatResponse:
+    """Maneja la conversación después de mostrar la clasificación"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    # Generar respuesta contextual basada en la clasificación previa
+    classification_result = conversation.get("classification_result", {})
+    category = classification_result.get("category", "general")
+    
+    response_text = generate_contextual_response(message, category, classification_result)
+    
+    conversation["messages"].append({
+        "role": MessageRole.ASSISTANT,
+        "content": response_text,
+        "timestamp": datetime.now()
+    })
+    
+    return ChatResponse(
+        response=response_text,
+        conversation_id=conversation_id,
+        agent_type="post_classification_advisor",
+        confidence_score=0.7,
+        severity_assessment="BAJO",
+        suggestions=[
+            "Consultar con un médico especialista",
+            "Monitorear los síntomas",
+            "Seguir las recomendaciones generales"
+        ],
+        follow_up_questions=[]
+    )
+
+
+async def handle_basic_medical_response(conversation_id: str, message: str) -> ChatResponse:
+    """Respuesta médica básica como fallback"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    response_text = generate_basic_medical_response(message, conversation["messages"])
+    
+    conversation["messages"].append({
+        "role": MessageRole.ASSISTANT,
+        "content": response_text,
+        "timestamp": datetime.now()
+    })
+    
+    return ChatResponse(
+        response=response_text,
+        conversation_id=conversation_id,
+        agent_type="basic_medical_advisor",
+        confidence_score=0.6,
+        severity_assessment="BAJO",
+        suggestions=[],
+        follow_up_questions=[]
+    )
+
+
+def extract_medical_info(message: str) -> List[str]:
+    """Extrae información médica relevante del mensaje del usuario"""
+    message_lower = message.lower()
+    extracted = []
+    
+    # Palabras clave para síntomas
+    symptom_keywords = {
+        'dolor': ['dolor', 'duele', 'molesta', 'pinchazos', 'punzadas'],
+        'fiebre': ['fiebre', 'temperatura', 'calentura', 'calor'],
+        'respiratorio': ['tos', 'toser', 'respirar', 'pecho', 'pulmones', 'ahogo'],
+        'digestivo': ['nausea', 'vomito', 'estomago', 'barriga', 'diarrea'],
+        'neurologico': ['cabeza', 'mareo', 'desmayo', 'vision', 'confusion'],
+        'musculoesqueletico': ['muscular', 'articular', 'hueso', 'artritis', 'rigidez'],
+        'cardiovascular': ['corazon', 'palpitaciones', 'presion', 'taquicardia'],
+        'dermatologico': ['piel', 'erupcion', 'picazon', 'mancha', 'herida']
+    }
+    
+    for category, keywords in symptom_keywords.items():
+        if any(keyword in message_lower for keyword in keywords):
+            extracted.append(f"{category}: {message[:100]}")
+    
+    # Si no se encontró nada específico, agregar el mensaje completo
+    if not extracted:
+        extracted.append(f"síntoma general: {message[:100]}")
+    
+    return extracted
+
+
+def generate_next_question(symptoms_collected: List[str], questions_asked: int) -> str:
+    """Genera la siguiente pregunta basada en los síntomas recopilados"""
+    
+    # Preguntas base según el número de pregunta
+    base_questions = [
+        "¿Cuándo comenzaron estos síntomas? ¿Hace horas, días o semanas?",
+        "¿Cómo describiría la intensidad de sus síntomas en una escala del 1 al 10?",
+        "¿Hay algo que haga que los síntomas empeoren or mejoren?",
+        "¿Ha notado otros síntomas adicionales que puedan estar relacionados?",
+        "¿Está tomando algún medicamento actualmente o ha tomado algo para estos síntomas?",
+        "¿Ha tenido problemas similares en el pasado?",
+        "¿Hay algún factor específico que cree que pudo haber desencadenado estos síntomas?"
+    ]
+    
+    if questions_asked < len(base_questions):
+        return base_questions[questions_asked - 1]
+    else:
+        return "¿Hay algún detalle adicional sobre sus síntomas que considere importante mencionar?"
+
+
+def generate_contextual_response(message: str, category: str, classification_result: Dict) -> str:
+    """Genera respuesta contextual basada en la clasificación"""
+    message_lower = message.lower()
+    
+    if any(word in message_lower for word in ['medicamento', 'medicina', 'pastilla', 'tratamiento']):
+        return f"Respecto a medicamentos para condiciones {category}, es importante que consulte con un médico antes de tomar cualquier medicamento. Basándome en el análisis previo, las recomendaciones generales incluyen monitoreo de síntomas y evaluación médica profesional."
+    
+    elif any(word in message_lower for word in ['cuando', 'médico', 'doctor', 'consulta']):
+        severity = classification_result.get("severity", "MEDIO")
+        if severity in ["CRÍTICO", "ALTO"]:
+            return "Dada la naturaleza de sus síntomas, le recomiendo que consulte con un médico lo antes posible, preferiblemente hoy mismo."
+        else:
+            return "Le recomiendo que programe una cita con su médico de cabecera en los próximos días para una evaluación más detallada."
+    
+    else:
+        return f"Entiendo su consulta. Basándome en el análisis previo relacionado con {category}, le sugiero seguir monitoreando sus síntomas y consultar con un profesional médico para un diagnóstico definitivo."
+
+
 def generate_basic_medical_response(message: str, conversation_history: list) -> str:
     """Genera una respuesta médica básica basada en palabras clave"""
     message_lower = message.lower()
@@ -250,24 +496,9 @@ def generate_basic_medical_response(message: str, conversation_history: list) ->
     elif any(word in message_lower for word in ['fiebre', 'temperatura', 'calentura']):
         return "La fiebre puede ser síntoma de varias condiciones. ¿Ha medido su temperatura? ¿Tiene otros síntomas como escalofríos, dolor de cabeza, o malestar general? ¿Cuánto tiempo lleva con fiebre?"
     
-    elif any(word in message_lower for word in ['tos', 'toser', 'expectoracion']):
-        return "La tos puede tener varias causas. ¿Es una tos seca o produce flema? ¿Hay sangre en la expectoración? ¿Cuánto tiempo lleva con la tos? ¿Tiene otros síntomas respiratorios como dificultad para respirar?"
-    
-    elif any(word in message_lower for word in ['nausea', 'nauseas', 'vomito', 'vomitos', 'mareo']):
-        return "Las náuseas y vómitos pueden ser síntomas de diferentes condiciones. ¿Cuándo comenzaron? ¿Ha vomitado y qué aspecto tiene el vómito? ¿Tiene dolor abdominal, fiebre o diarrea asociados?"
-    
-    elif any(word in message_lower for word in ['cabeza', 'dolor de cabeza', 'cefalea']):
-        return "Los dolores de cabeza pueden variar mucho. ¿Cómo describiría el dolor (pulsante, presión, punzante)? ¿En qué parte de la cabeza lo siente? ¿Cuánto tiempo lleva con este dolor? ¿Hay algo que lo desencadene o lo alivie?"
-    
-    elif any(word in message_lower for word in ['estomago', 'abdominal', 'barriga', 'vientre']):
-        return "El dolor abdominal requiere evaluación cuidadosa. ¿En qué parte del abdomen siente el dolor? ¿Es constante o viene en oleadas? ¿Se irradia a otras partes? ¿Tiene náuseas, vómitos, o cambios en las deposiciones?"
-    
-    elif any(word in message_lower for word in ['cansancio', 'fatiga', 'debilidad', 'agotamiento']):
-        return "La fatiga puede tener múltiples causas. ¿Cuánto tiempo lleva sintiéndose así? ¿Ha notado pérdida de peso, cambios en el apetito, o dificultades para dormir? ¿Tiene otros síntomas acompañantes?"
-    
     else:
         # Respuesta general para otros casos
-        return f"Entiendo que me consulta sobre: '{message}'. Para poder ayudarle adecuadamente, me gustaría conocer más detalles. ¿Puede describir sus síntomas principales, cuándo comenzaron y cómo han evolucionado? También sería útil saber si tiene alguna condición médica previa o toma algún medicamento."
+        return f"Entiendo que me consulta sobre: '{message}'. Para poder ayudarle adecuadamente, me gustaría conocer más detalles. ¿Puede describir sus síntomas principales, cuándo comenzaron y cómo han evolucionado?"
 
 
 async def handle_advanced_conversation(conversation_id: str, message: str) -> ChatResponse:

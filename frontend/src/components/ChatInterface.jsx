@@ -27,6 +27,20 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
     inputRef.current?.focus();
   }, []);
 
+  // Reiniciar el chat cuando conversationId cambia a null
+  useEffect(() => {
+    if (conversationId === null) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: '¡Hola! Soy su asistente médico virtual de DiagnostiCAT. 🏥\n\nAntes de comenzar con su consulta médica, necesito su consentimiento informado.\n\n¿Acepta que procese su información médica para brindarle asistencia personalizada?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar',
+          timestamp: new Date(),
+          isWelcome: true
+        }
+      ]);
+    }
+  }, [conversationId]);
+
   const sendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
@@ -121,23 +135,45 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
             <div className="message-content">
               <div className="message-text">{message.content}</div>
               
-              {message.agent_type && (
-                <div className="message-meta">
-                  <span className="agent-type">🤖 {message.agent_type}</span>
-                  {message.confidence_score && (
-                    <span className="confidence">Confianza: {Math.round(message.confidence_score * 100)}%</span>
+              {/* Solo mostrar meta información para diagnósticos finales */}
+              {message.is_diagnosis && (
+                <div className="diagnosis-card">
+                  <div className="diagnosis-header">
+                    <h3>🏥 Análisis Médico Preliminar</h3>
+                  </div>
+                  
+                  {message.predicted_condition && (
+                    <div className="predicted-condition">
+                      <strong>Condición Predicha:</strong> {message.predicted_condition}
+                    </div>
                   )}
-                </div>
-              )}
-
-              {message.severity_assessment && (
-                <div className="severity-assessment">
-                  <span 
-                    className="severity-badge"
-                    style={{ backgroundColor: getSeverityColor(message.severity_assessment) }}
-                  >
-                    📊 Urgencia: {message.severity_assessment}
-                  </span>
+                  
+                  {message.confidence_score && (
+                    <div className="confidence-score">
+                      <strong>Nivel de Confianza:</strong> {Math.round(message.confidence_score * 100)}%
+                      <div className="confidence-bar">
+                        <div 
+                          className="confidence-fill" 
+                          style={{ width: `${message.confidence_score * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {message.severity_assessment && (
+                    <div className="severity-assessment">
+                      <span 
+                        className="severity-badge"
+                        style={{ backgroundColor: getSeverityColor(message.severity_assessment) }}
+                      >
+                        📊 Nivel de Urgencia: {message.severity_assessment}
+                      </span>
+                    </div>
+                  )}
+                  
+                  <div className="diagnosis-disclaimer">
+                    ⚠️ <em>Este análisis es preliminar y no reemplaza el diagnóstico médico profesional.</em>
+                  </div>
                 </div>
               )}
 

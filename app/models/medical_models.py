@@ -155,6 +155,8 @@ class ChatResponse(BaseModel):
     severity_assessment: Optional[str] = "BAJO"
     suggestions: Optional[List[str]] = []
     follow_up_questions: Optional[List[str]] = []
+    predicted_condition: Optional[str] = None
+    is_diagnosis: Optional[bool] = False
     timestamp: datetime = Field(default_factory=datetime.now)
     
     class Config:
