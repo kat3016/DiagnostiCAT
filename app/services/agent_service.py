@@ -1,174 +1,116 @@
 """
-Servicio para gestión de agentes médicos
+Servicio para gestión de agentes médicos con CrewAI
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import asyncio
 from datetime import datetime
 
-from app.agents.base_agent import BaseAgent
-from app.agents.medical_agents import GeneralPractitionerAgent
+from app.crew.anamnesis_crew import AnamnesisConversacionalCrew
 from app.models.agent_models import AgentType, AgentInfo, AgentMetrics
 from app.models.medical_models import MessageModel
 
 
 class AgentService:
-    """Servicio para gestionar agentes médicos"""
+    """Servicio para gestionar agentes médicos con CrewAI"""
     
     def __init__(self):
-        self.agents: Dict[str, BaseAgent] = {}
-        self._initialize_default_agents()
+        self.anamnesis_crew = AnamnesisConversacionalCrew()
+        self._initialize_crew()
     
-    def _initialize_default_agents(self):
-        """Inicializa agentes disponibles"""
-        # Crear agente médico general
-        general_agent = GeneralPractitionerAgent()
-        
-        # Registrar agente
-        self.agents[general_agent.id] = general_agent
-        
-        print(f"✅ Agentes médicos inicializados: {len(self.agents)} agentes disponibles")
+    def _initialize_crew(self):
+        """Inicializa la crew de anamnesis conversacional"""
+        try:
+            crew_info = self.anamnesis_crew.get_crew_info()
+            print(f"✅ CrewAI inicializada: {crew_info['agents_count']} agentes, {crew_info['tasks_count']} tareas")
+            print(f"   Agentes: {', '.join(crew_info['agents'])}")
+        except Exception as e:
+            print(f"❌ Error inicializando CrewAI: {e}")
+            raise
     
-    def get_agent_by_id(self, agent_id: str) -> Optional[BaseAgent]:
-        """Obtiene un agente por su ID"""
-        return self.agents.get(agent_id)
+    def get_crew_info(self) -> Dict[str, Any]:
+        """Obtiene información de la crew"""
+        return self.anamnesis_crew.get_crew_info()
     
-    def get_agent_by_type(self, agent_type: AgentType) -> Optional[BaseAgent]:
-        """Obtiene el primer agente del tipo especificado"""
-        for agent in self.agents.values():
-            if agent.agent_type == agent_type:
-                return agent
-        return None
+    async def run_initial_interview(self, inputs: Dict[str, Any]) -> str:
+        """Ejecuta solo la entrevista inicial"""
+        try:
+            result = self.anamnesis_crew.run_interview_only(inputs)
+            return result
+        except Exception as e:
+            print(f"❌ Error en entrevista inicial: {e}")
+            raise
     
-    def get_all_agents(self) -> List[BaseAgent]:
-        """Obtiene todos los agentes disponibles"""
-        return list(self.agents.values())
+    async def run_preliminary_analysis(self, inputs: Dict[str, Any]) -> str:
+        """Ejecuta análisis preliminar"""
+        try:
+            result = self.anamnesis_crew.run_analysis_only(inputs)
+            return result
+        except Exception as e:
+            print(f"❌ Error en análisis preliminar: {e}")
+            raise
     
-    def get_agents_info(self) -> List[AgentInfo]:
-        """Obtiene información de todos los agentes"""
-        agents_info = []
-        for agent in self.agents.values():
-            info = AgentInfo(
-                id=agent.id,
-                name=agent.name,
-                agent_type=agent.agent_type,
-                description=f"Agente especializado en {', '.join(agent.specialties)}",
-                specialties=agent.specialties,
-                status="active",  # Por simplicidad, todos están activos
-                created_at=agent.created_at,
-                updated_at=agent.created_at,
-                metrics=AgentMetrics(
-                    agent_id=agent.id,
-                    total_conversations=agent.conversation_count,
-                    avg_response_time=1.5,  # Simulado
-                    avg_confidence_score=0.85,  # Simulado
-                    success_rate=0.92,  # Simulado
-                    last_active=datetime.now()
-                )
-            )
-            agents_info.append(info)
-        
-        return agents_info
+    async def run_data_structuring(self, inputs: Dict[str, Any]) -> str:
+        """Ejecuta estructuración de datos"""
+        try:
+            result = self.anamnesis_crew.run_structuring_only(inputs)
+            return result
+        except Exception as e:
+            print(f"❌ Error en estructuración: {e}")
+            raise
     
-    def recommend_agent(
-        self,
-        message: str,
-        conversation_history: List[MessageModel] = None
-    ) -> BaseAgent:
-        """
-        Recomienda el mejor agente para un mensaje específico
-        
-        Args:
-            message: Mensaje del usuario
-            conversation_history: Historial de conversación
-            
-        Returns:
-            BaseAgent: Agente recomendado (siempre médico general)
-        """
-        # Recomendar agente según la fase del flujo
-        # Por defecto, empezar con entrevista inicial
-        interview_agent = self.get_agent_by_type(AgentType.INITIAL_INTERVIEW)
-        return interview_agent or list(self.agents.values())[0]
+    async def run_classification(self, inputs: Dict[str, Any]) -> str:
+        """Ejecuta clasificación médica"""
+        try:
+            result = self.anamnesis_crew.run_classification_only(inputs)
+            return result
+        except Exception as e:
+            print(f"❌ Error en clasificación: {e}")
+            raise
     
-    async def process_message_with_agent(
-        self,
-        agent_id: str,
-        message: str,
-        conversation_history: List[MessageModel] = None,
-        patient_context: Optional[Dict] = None
-    ):
-        """
-        Procesa un mensaje con un agente específico
-        
-        Args:
-            agent_id: ID del agente
-            message: Mensaje a procesar
-            conversation_history: Historial de conversación
-            patient_context: Contexto del paciente
-            
-        Returns:
-            AgentResponse: Respuesta del agente
-        """
-        agent = self.get_agent_by_id(agent_id)
-        if not agent:
-            raise ValueError(f"Agente con ID {agent_id} no encontrado")
-        
-        return await agent.process_message(
-            message=message,
-            conversation_history=conversation_history or [],
-            patient_context=patient_context
-        )
+    async def run_complete_flow(self, inputs: Dict[str, Any]) -> Any:
+        """Ejecuta el flujo completo de anamnesis conversacional"""
+        try:
+            crew = self.anamnesis_crew.crew()
+            result = crew.kickoff(inputs=inputs)
+            return result
+        except Exception as e:
+            print(f"❌ Error en flujo completo: {e}")
+            raise
     
-    def add_agent(self, agent: BaseAgent) -> str:
-        """
-        Añade un nuevo agente al servicio
-        
-        Args:
-            agent: Agente a añadir
-            
-        Returns:
-            str: ID del agente añadido
-        """
-        self.agents[agent.id] = agent
-        return agent.id
+    def get_available_agents(self) -> List[str]:
+        """Obtiene lista de agentes disponibles en la crew"""
+        crew_info = self.get_crew_info()
+        return crew_info.get('agents', [])
     
-    def remove_agent(self, agent_id: str) -> bool:
-        """
-        Elimina un agente del servicio
-        
-        Args:
-            agent_id: ID del agente a eliminar
-            
-        Returns:
-            bool: True si se eliminó correctamente
-        """
-        if agent_id in self.agents:
-            del self.agents[agent_id]
-            return True
-        return False
+    def get_available_tasks(self) -> List[str]:
+        """Obtiene lista de tareas disponibles en la crew"""
+        crew_info = self.get_crew_info()
+        return crew_info.get('tasks', [])
     
-    def get_agent_metrics(self, agent_id: str) -> Optional[AgentMetrics]:
-        """
-        Obtiene métricas de un agente específico
-        
-        Args:
-            agent_id: ID del agente
-            
-        Returns:
-            AgentMetrics: Métricas del agente
-        """
-        agent = self.get_agent_by_id(agent_id)
-        if not agent:
-            return None
-        
-        return AgentMetrics(
-            agent_id=agent_id,
-            total_conversations=agent.conversation_count,
-            avg_response_time=1.5,  # Simulado - aquí calcularías el promedio real
-            avg_confidence_score=0.85,  # Simulado
-            success_rate=0.92,  # Simulado
-            last_active=datetime.now()
-        )
+    def get_process_type(self) -> str:
+        """Obtiene el tipo de proceso de la crew"""
+        crew_info = self.get_crew_info()
+        return crew_info.get('process', 'sequential')
+    
+    def is_memory_enabled(self) -> bool:
+        """Verifica si la memoria está habilitada"""
+        crew_info = self.get_crew_info()
+        return crew_info.get('memory_enabled', False)
+    
+    def get_crew_status(self) -> Dict[str, Any]:
+        """Obtiene el estado actual de la crew"""
+        crew_info = self.get_crew_info()
+        return {
+            "status": "ready",
+            "agents_count": crew_info.get('agents_count', 0),
+            "tasks_count": crew_info.get('tasks_count', 0),
+            "process": crew_info.get('process', 'sequential'),
+            "memory_enabled": crew_info.get('memory_enabled', False),
+            "max_execution_time": crew_info.get('max_execution_time', 900),
+            "available_agents": crew_info.get('agents', []),
+            "available_tasks": crew_info.get('tasks', [])
+        }
 
 
 # Instancia global del servicio de agentes
