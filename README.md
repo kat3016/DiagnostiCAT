@@ -83,10 +83,10 @@ DiagnostiCAT/
   "axios": "^1.6.0",
   "vite": "^5.0.0"
 }
-Modelos de IA Utilizados
-NVIDIA Nemotron: meta/llama-3.1-8b-instruct (Principal)
-Hugging Face: emilyalsentzer/Bio_ClinicalBERT (Clasificación médica)
-OpenAI: gpt-4o-mini (Fallback)
+- Modelos de IA Utilizados
+- NVIDIA Nemotron: meta/llama-3.1-8b-instruct (Principal)
+- Hugging Face: emilyalsentzer/Bio_ClinicalBERT (Clasificación médica)
+- OpenAI: gpt-4o-mini (Fallback)
 🚀 Despliegue
 Opción 1: Despliegue con Docker (Recomendado)
 git clone <repository-url>
@@ -100,10 +100,10 @@ docker-compose up --build
 
 Servicios disponibles:
 
-Backend API: http://localhost:8000
-Frontend React: http://localhost:3000
-PostgreSQL: localhost:5432
-Redis: localhost:6379
+- Backend API: http://localhost:8000
+- Frontend React: http://localhost:3000
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
 Opción 2: Despliegue Manual
 Backend
 Preparar entorno Python
@@ -132,34 +132,34 @@ AWS Lambda (Serverless)
 # El proyecto incluye soporte para Mangum
 pip install mangum
 # Desplegar usando AWS SAM o Serverless Framework
-Railway/Render/Vercel
-⚙️ Configuración
-Variables de Entorno Requeridas
-API Keys Necesarias
-NVIDIA API Key (Principal): https://build.nvidia.com/
-OpenAI API Key (Opcional/Fallback): https://platform.openai.com/
-📊 Endpoints de la API
-Conversación Médica
-POST /api/v1/chat/ - Iniciar conversación médica
-GET /api/v1/chat/{id}/history - Historial de conversación
-Flujo de Anamnesis
-POST /api/v1/flow/consent - Registrar consentimiento
-POST /api/v1/flow/interview/answer - Responder preguntas de entrevista
-POST /api/v1/flow/analysis/preliminary - Análisis preliminar
-POST /api/v1/flow/structure-and-classify - Estructuración y clasificación
+- Railway/Render/Vercel
+- ⚙️ Configuración
+- Variables de Entorno Requeridas
+- API Keys Necesarias
+- NVIDIA API Key (Principal): https://build.nvidia.com/
+- OpenAI API Key (Opcional/Fallback): https://platform.openai.com/
+- 📊 Endpoints de la API
+- Conversación Médica
+- POST /api/v1/chat/ - Iniciar conversación médica
+- GET /api/v1/chat/{id}/history - Historial de conversación
+- Flujo de Anamnesis
+- POST /api/v1/flow/consent - Registrar consentimiento
+- POST /api/v1/flow/interview/answer - Responder preguntas de entrevista
+- POST /api/v1/flow/analysis/preliminary - Análisis preliminar
+- POST /api/v1/flow/structure-and-classify - Estructuración y clasificación
 Documentación
-Swagger UI: http://localhost:8000/docs
-ReDoc: http://localhost:8000/redoc
-🧪 Testing
-🔒 Consideraciones de Seguridad
-✅ Consentimiento informado obligatorio
-✅ Disclaimers médicos en todas las respuestas
-✅ Datos médicos tratados con confidencialidad
-✅ Validación de entrada en todos los endpoints
-✅ CORS configurado para dominios específicos
-✅ Variables de entorno para información sensible
-⚠️ Importante - Disclaimer Médico
-ADVERTENCIA CRÍTICA: DiagnostiCAT es una herramienta de asistencia médica inicial basada en IA.
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- 🧪 Testing
+- 🔒 Consideraciones de Seguridad
+- ✅ Consentimiento informado obligatorio
+- ✅ Disclaimers médicos en todas las respuestas
+- ✅ Datos médicos tratados con confidencialidad
+- ✅ Validación de entrada en todos los endpoints
+- ✅ CORS configurado para dominios específicos
+- ✅ Variables de entorno para información sensible
+- ⚠️ Importante - Disclaimer Médico
+- ADVERTENCIA CRÍTICA: DiagnostiCAT es una herramienta de asistencia médica inicial basada en IA.
 
 ❌ NO reemplaza la consulta médica profesional
 ❌ NO proporciona diagnósticos médicos definitivos
