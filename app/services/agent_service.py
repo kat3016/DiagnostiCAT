@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 
 from app.agents.base_agent import BaseAgent
-from app.agents.medical_agents import GeneralPractitionerAgent
+from app.agents.flow_agents import InitialInterviewAgent, PreliminaryAnalysisAgent, DataStructuringAgent
 from app.models.agent_models import AgentType, AgentInfo, AgentMetrics
 from app.models.medical_models import MessageModel
 
@@ -20,14 +20,18 @@ class AgentService:
         self._initialize_default_agents()
     
     def _initialize_default_agents(self):
-        """Inicializa agentes por defecto"""
-        # Crear agente médico general
-        gp_agent = GeneralPractitionerAgent()
+        """Inicializa agentes del flujo específico"""
+        # Crear agentes según el flujo requerido
+        interview_agent = InitialInterviewAgent()
+        analysis_agent = PreliminaryAnalysisAgent()
+        structuring_agent = DataStructuringAgent()
         
-        # Registrar agente
-        self.agents[gp_agent.id] = gp_agent
+        # Registrar agentes
+        self.agents[interview_agent.id] = interview_agent
+        self.agents[analysis_agent.id] = analysis_agent
+        self.agents[structuring_agent.id] = structuring_agent
         
-        print(f"✅ Agente inicializado: {len(self.agents)} agente disponible")
+        print(f"✅ Agentes del flujo inicializados: {len(self.agents)} agentes disponibles")
     
     def get_agent_by_id(self, agent_id: str) -> Optional[BaseAgent]:
         """Obtiene un agente por su ID"""
@@ -85,9 +89,10 @@ class AgentService:
         Returns:
             BaseAgent: Agente recomendado (siempre médico general)
         """
-        # Siempre usar médico general (único agente disponible)
-        gp_agent = self.get_agent_by_type(AgentType.GENERAL_PRACTITIONER)
-        return gp_agent or list(self.agents.values())[0]
+        # Recomendar agente según la fase del flujo
+        # Por defecto, empezar con entrevista inicial
+        interview_agent = self.get_agent_by_type(AgentType.INITIAL_INTERVIEW)
+        return interview_agent or list(self.agents.values())[0]
     
     async def process_message_with_agent(
         self,

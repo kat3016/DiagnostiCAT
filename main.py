@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.routers import medical_chat
 from app.routers import consent_anamnesis
+from app.routers import anamnesis_flow
 from app.core.database import create_tables
 from app.core.validators import validate_llm_configuration, LLMConfigurationError, get_configuration_status
 
@@ -109,7 +110,13 @@ app.include_router(
 app.include_router(
     consent_anamnesis.router,
     prefix="/api/v1",
-    tags=["Consentimiento y Anamnesis"]
+    tags=["Consentimiento y Anamnesis (Legacy)"]
+)
+
+app.include_router(
+    anamnesis_flow.router,
+    prefix="/api/v1/flow",
+    tags=["Flujo de Anamnesis Conversacional"]
 )
 
 
