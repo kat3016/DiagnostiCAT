@@ -131,3 +131,33 @@ class AnamnesisStructured(BaseModel):
     antecedentes_familiares: List[str] = []
     habitos: Dict[str, Any] = {}
     sintomas_asociados: List[str] = []
+
+
+class ChatRequest(BaseModel):
+    """Solicitud de chat médico"""
+    message: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: Optional[str] = None
+    patient_context: Optional[Dict[str, Any]] = {}
+    
+    @validator('message')
+    def validate_message(cls, v):
+        if not v.strip():
+            raise ValueError('El mensaje no puede estar vacío')
+        return v.strip()
+
+
+class ChatResponse(BaseModel):
+    """Respuesta de chat médico"""
+    response: str
+    conversation_id: str
+    agent_type: str
+    confidence_score: Optional[float] = 0.0
+    severity_assessment: Optional[str] = "BAJO"
+    suggestions: Optional[List[str]] = []
+    follow_up_questions: Optional[List[str]] = []
+    timestamp: datetime = Field(default_factory=datetime.now)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }

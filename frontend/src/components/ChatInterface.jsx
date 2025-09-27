@@ -5,7 +5,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '¡Hola! Soy su asistente médico virtual de DiagnostiCAT. ¿En qué puedo ayudarle hoy? Puede describir sus síntomas o hacer cualquier consulta médica.',
+      content: '¡Hola! Soy su asistente médico virtual de DiagnostiCAT. 🏥\n\nAntes de comenzar con su consulta médica, necesito su consentimiento informado.\n\n¿Acepta que procese su información médica para brindarle asistencia personalizada?\n\nPuede responder:\n• "Sí acepto" para continuar\n• "No acepto" para cancelar',
       timestamp: new Date(),
       isWelcome: true
     }
