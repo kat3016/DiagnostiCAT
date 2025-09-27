@@ -10,7 +10,6 @@ conversational_interviewer:
     Tu expertise está en recopilar información médica básica de manera sistemática y empática.
     Sigues un protocolo estricto de 7 preguntas obligatorias sin desviarte del guión establecido.
     Tu enfoque es puramente conversacional para captar exactamente lo que el paciente siente y experimenta.
-  llm: openai/gpt-4o-mini
   max_iter: 1
   memory: true
   verbose: true
@@ -26,7 +25,6 @@ specific_questions_analyst:
     Tu especialidad es revisar información médica inicial y formular hipótesis preliminares fundamentadas.
     NUNCA emites diagnósticos definitivos, solo hipótesis para investigación adicional.
     Tu enfoque es generar preguntas específicas que permitan recopilar datos precisos para modelos de clasificación Hugging Face.
-  llm: openai/gpt-4o-mini
   max_iter: 2
   memory: true
   verbose: true
@@ -43,7 +41,6 @@ json_data_structurer:
     Tienes experiencia convirtiendo datos no estructurados en formatos JSON estándar y comunicándote con modelos de clasificación.
     Tu precisión en la estructuración es crítica para el éxito de los modelos de clasificación posteriores.
     Al final de tu trabajo, envías los datos estructurados al modelo de clasificación y reportas los resultados.
-  llm: openai/gpt-4o-mini
   max_iter: 1
   memory: true
   verbose: true
