@@ -17,7 +17,9 @@ try:
 except ImportError:
     HF_AVAILABLE = False
 
-from app.services.llm_service import llm_service
+# Comentar import de llm_service que usa Ollama y usar hybrid_agent
+# from app.services.llm_service import llm_service
+from app.crew.hybrid_agent import create_hybrid_agent
 
 
 class ClassificationModel:
@@ -160,7 +162,7 @@ class ClassificationModel:
         else:
             # Fallback al LLM original
             print("⚠️  Usando clasificación LLM como fallback")
-            return await self._classify_with_llm_fallback(structured_data)
+            return self._classify_with_llm_fallback(structured_data)
     
     async def _classify_with_huggingface(self, structured_data: Dict[str, Any]) -> Dict[str, Any]:
         """Clasificación usando modelos de Hugging Face"""
@@ -277,7 +279,7 @@ class ClassificationModel:
         except Exception as e:
             return self._create_error_classification(f"Error procesando resultados HF: {str(e)}")
     
-    async def _classify_with_llm_fallback(self, structured_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _classify_with_llm_fallback(self, structured_data: Dict[str, Any]) -> Dict[str, Any]:
         """Clasificación usando LLM como fallback"""
         classification_prompt = f"""Eres un modelo de clasificación médica experto. Analiza los datos estructurados de anamnesis y clasifica el caso.
 
@@ -308,11 +310,21 @@ FORMATO DE RESPUESTA (JSON):
 Analiza cuidadosamente y responde SOLO con el JSON válido."""
         
         try:
-            llm_response = await llm_service.generate_response(
-                system_prompt=classification_prompt,
-                user_message=f"Datos de anamnesis para clasificar:\n{json.dumps(structured_data, ensure_ascii=False, indent=2)}",
-                conversation_history=[]
-            )
+            # Usar hybrid_agent en lugar de llm_service
+            hybrid_llm, provider = create_hybrid_agent()
+            
+            # Crear el mensaje completo
+            full_message = f"{classification_prompt}\n\nDatos de anamnesis para clasificar:\n{json.dumps(structured_data, ensure_ascii=False, indent=2)}"
+            
+            # Generar respuesta
+            llm_response_content = hybrid_llm.invoke(full_message).content
+            
+            # Crear estructura de respuesta similar a llm_service
+            llm_response = {
+                "response": llm_response_content,
+                "success": True,
+                "model": provider
+            }
             
             # Intentar parsear la respuesta como JSON
             try:

@@ -8,7 +8,9 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from app.models.medical_models import MessageRole
-from app.services.llm_service import llm_service
+# Comentar import de llm_service que usa Ollama y usar hybrid_agent
+# from app.services.llm_service import llm_service
+from app.crew.hybrid_agent import create_hybrid_agent
 
 
 class MedicalDataStructuringService:
@@ -112,14 +114,14 @@ class MedicalDataStructuringService:
             all_text += " " + specific_text
         
         # Usar LLM para extracción estructurada
-        structured_fields = await self._llm_extract_structured_data(all_text, user_messages)
+        structured_fields = self._llm_extract_structured_data(all_text, user_messages)
         
         # Normalizar semánticamente los campos extraídos
         normalized_fields = await self.semantic_normalizer.normalize_medical_data(structured_fields)
         
         return normalized_fields
     
-    async def _llm_extract_structured_data(self, text: str, user_messages: List[str]) -> Dict[str, Any]:
+    def _llm_extract_structured_data(self, text: str, user_messages: List[str]) -> Dict[str, Any]:
         """Usa LLM para extraer datos estructurados del texto médico"""
         
         extraction_prompt = f"""Eres un especialista en informática médica. Extrae información estructurada de esta conversación médica.
@@ -162,12 +164,21 @@ FORMATO DE RESPUESTA (JSON válido):
 Responde SOLO con el JSON válido, sin explicaciones adicionales."""
 
         try:
-            llm_response = await llm_service.generate_response(
-                system_prompt=extraction_prompt,
-                user_message="Extrae la información estructurada según las instrucciones.",
-                conversation_history=[],
-                temperature=0.3  # Baja temperatura para respuestas consistentes
-            )
+            # Usar hybrid_agent en lugar de llm_service
+            hybrid_llm, provider = create_hybrid_agent()
+            
+            # Crear el mensaje completo
+            full_message = f"{extraction_prompt}\n\nExtrae la información estructurada según las instrucciones."
+            
+            # Generar respuesta
+            llm_response_content = hybrid_llm.invoke(full_message).content
+            
+            # Crear estructura de respuesta similar a llm_service
+            llm_response = {
+                "response": llm_response_content,
+                "success": True,
+                "model": provider
+            }
             
             # Intentar parsear la respuesta JSON
             response_text = llm_response.get("response", "{}")

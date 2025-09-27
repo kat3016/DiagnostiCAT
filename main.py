@@ -16,7 +16,13 @@ from app.routers import medical_chat
 # from app.core.database import create_tables  # Comentado temporalmente
 # from app.core.validators import validate_llm_configuration, LLMConfigurationError, get_configuration_status  # Comentado temporalmente
 
-from mangum import Mangum 
+# Mangum solo necesario para AWS Lambda, comentado para desarrollo local
+try:
+    from mangum import Mangum
+    MANGUM_AVAILABLE = True
+except ImportError:
+    MANGUM_AVAILABLE = False
+    print("⚠️ Mangum no disponible - solo necesario para AWS Lambda") 
 
 
 @asynccontextmanager
@@ -121,7 +127,11 @@ app.include_router(
 #     tags=["Flujo de Anamnesis Conversacional"]
 # )
 
-handler = Mangum(app)
+# Handler para AWS Lambda (solo si mangum está disponible)
+if MANGUM_AVAILABLE:
+    handler = Mangum(app)
+else:
+    handler = None
 
 
 if __name__ == "__main__":
