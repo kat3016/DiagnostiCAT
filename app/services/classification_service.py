@@ -38,9 +38,10 @@ class ClassificationModel:
         ]
         
         # Configuración del modelo de Hugging Face
-        self.hf_model_name = "microsoft/DialoGPT-medium"  # Modelo base para clasificación médica
-        self.medical_model_name = "emilyalsentzer/Bio_ClinicalBERT"  # Modelo médico especializado
-        self.use_medical_bert = True  # Usar BERT médico por defecto
+        # Modelos que realmente funcionan para clasificación médica
+        self.medical_model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"  # Modelo médico real
+        self.zero_shot_model = "facebook/bart-large-mnli"  # Para zero-shot classification
+        self.use_medical_bert = False  # Usar zero-shot por defecto (funciona mejor sin entrenamiento específico)
         
         # Inicializar modelos
         self.tokenizer = None
@@ -74,34 +75,39 @@ class ClassificationModel:
         """Cargar modelos de Hugging Face (ejecutar en hilo separado)"""
         try:
             if self.use_medical_bert:
-                # Usar modelo BERT médico especializado
+                # Usar modelo BERT médico con zero-shot classification
+                # No intentamos crear un clasificador específico, sino usar zero-shot con modelo médico
                 model_name = self.medical_model_name
-                print(f"📥 Cargando modelo médico: {model_name}")
+                print(f"📥 Cargando modelo médico para zero-shot: {model_name}")
                 
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModelForSequenceClassification.from_pretrained(
-                    model_name,
-                    num_labels=len(self.categories)
-                )
-                
-                # Crear pipeline de clasificación
-                self.classifier = pipeline(
-                    "text-classification",
-                    model=self.model,
-                    tokenizer=self.tokenizer,
-                    return_all_scores=True
-                )
-            else:
-                # Usar modelo general
-                print(f"📥 Cargando modelo general para clasificación médica")
                 self.classifier = pipeline(
                     "zero-shot-classification",
-                    model="facebook/bart-large-mnli"
+                    model=model_name,
+                    device=-1  # CPU
+                )
+            else:
+                # Usar modelo general para zero-shot classification
+                print(f"📥 Cargando modelo BART para zero-shot classification")
+                self.classifier = pipeline(
+                    "zero-shot-classification",
+                    model=self.zero_shot_model,
+                    device=-1  # CPU
                 )
                 
         except Exception as e:
             print(f"❌ Error cargando modelos: {e}")
-            raise e
+            # Fallback a modelo más simple si falla
+            try:
+                print("� Intentando modelo de respaldo...")
+                self.classifier = pipeline(
+                    "zero-shot-classification",
+                    model="facebook/bart-base",
+                    device=-1
+                )
+                print("✅ Modelo de respaldo cargado")
+            except Exception as e2:
+                print(f"❌ Error en modelo de respaldo: {e2}")
+                raise e
     
     def _prepare_text_for_classification(self, structured_data: Dict[str, Any]) -> str:
         """Preparar texto de los datos estructurados para clasificación"""
@@ -161,24 +167,17 @@ class ClassificationModel:
         try:
             # Preparar texto para clasificación
             text_input = self._prepare_text_for_classification(structured_data)
+            print(f"🔍 Clasificando texto: {text_input[:100]}...")
             
-            # Ejecutar clasificación en hilo separado para no bloquear
+            # Ejecutar clasificación zero-shot en hilo separado para no bloquear
             loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                self.executor,
+                self._run_zero_shot_classification,
+                text_input
+            )
             
-            if self.use_medical_bert:
-                # Usar BERT médico con clasificación directa
-                results = await loop.run_in_executor(
-                    self.executor,
-                    self._run_bert_classification,
-                    text_input
-                )
-            else:
-                # Usar clasificación zero-shot
-                results = await loop.run_in_executor(
-                    self.executor,
-                    self._run_zero_shot_classification,
-                    text_input
-                )
+            print(f"📊 Resultados HF: {results}")
             
             # Procesar resultados y crear estructura de respuesta
             return self._process_hf_results(results, structured_data, text_input)
@@ -187,74 +186,69 @@ class ClassificationModel:
             print(f"❌ Error en clasificación HF: {e}")
             return self._create_error_classification(str(e))
     
-    def _run_bert_classification(self, text: str) -> List[Dict]:
-        """Ejecutar clasificación BERT (en hilo separado)"""
-        # Truncar texto si es muy largo
-        max_length = 512
-        if len(text) > max_length:
-            text = text[:max_length]
-        
-        results = self.classifier(text)
-        return results
-    
     def _run_zero_shot_classification(self, text: str) -> Dict:
         """Ejecutar clasificación zero-shot (en hilo separado)"""
+        # Etiquetas más específicas y en contexto médico para mejor clasificación
         candidate_labels = [
-            "neurological disorder", "cardiovascular disease", "respiratory problem",
-            "gastrointestinal issue", "musculoskeletal problem", "skin condition",
-            "psychiatric condition", "other medical condition"
+            "dolor de cabeza, migraña, problemas neurológicos, mareos, problemas cerebrales",
+            "dolor de pecho, problemas cardíacos, palpitaciones, presión arterial, cardiovascular", 
+            "tos, problemas respiratorios, dificultad para respirar, pulmones, asma",
+            "dolor de estómago, náuseas, vómitos, problemas digestivos, gastrointestinal",
+            "dolor muscular, dolor articular, problemas de huesos, artritis, musculoesquelético",
+            "problemas de piel, erupciones, picazón, dermatológico",
+            "ansiedad, depresión, problemas mentales, estrés, psiquiátrico",
+            "otros síntomas médicos generales"
         ]
         
+        # Ejecutar clasificación
         results = self.classifier(text, candidate_labels)
-        return results
+        
+        # Mapear resultados a nuestras categorías
+        label_mapping = {
+            candidate_labels[0]: "neurological",
+            candidate_labels[1]: "cardiovascular", 
+            candidate_labels[2]: "respiratory",
+            candidate_labels[3]: "gastrointestinal",
+            candidate_labels[4]: "musculoskeletal",
+            candidate_labels[5]: "dermatological",
+            candidate_labels[6]: "psychiatric",
+            candidate_labels[7]: "other"
+        }
+        
+        # Convertir las etiquetas largas a nuestras categorías
+        mapped_results = {
+            'labels': [label_mapping.get(label, 'other') for label in results['labels']],
+            'scores': results['scores']
+        }
+        
+        return mapped_results
     
     def _process_hf_results(self, results, structured_data: Dict[str, Any], text_input: str) -> Dict[str, Any]:
         """Procesar resultados de Hugging Face y crear estructura de respuesta"""
         try:
-            if self.use_medical_bert:
-                # Procesar resultados de BERT médico
-                if isinstance(results, list) and len(results) > 0:
-                    # Los resultados del pipeline pueden ser diferentes, verificar estructura
-                    if isinstance(results[0], dict) and 'score' in results[0]:
-                        # Tomar el resultado con mayor confianza
-                        best_result = max(results, key=lambda x: x.get('score', 0))
-                        primary_category = self._map_label_to_category(best_result.get('label', 'other'))
-                        confidence_score = float(best_result.get('score', 0.5))
-                        
-                        # Obtener categorías secundarias
-                        secondary_categories = [
-                            self._map_label_to_category(r.get('label', ''))
-                            for r in sorted(results, key=lambda x: x.get('score', 0), reverse=True)[1:3]
-                            if r.get('score', 0) > 0.3
-                        ]
-                    else:
-                        # Formato alternativo - usar análisis básico
-                        primary_category = self._classify_by_keywords(text_input)
-                        confidence_score = 0.6
-                        secondary_categories = []
-                else:
-                    primary_category = self._classify_by_keywords(text_input)
-                    confidence_score = 0.5
-                    secondary_categories = []
-            else:
-                # Procesar resultados de zero-shot
-                labels = results.get('labels', [])
-                scores = results.get('scores', [])
+            # Procesar resultados de zero-shot classification
+            labels = results.get('labels', [])
+            scores = results.get('scores', [])
+            
+            if labels and scores:
+                # La clasificación ya viene mapeada a nuestras categorías
+                primary_category = labels[0]
+                confidence_score = float(scores[0])
                 
-                if labels and scores:
-                    primary_category = self._map_zero_shot_label_to_category(labels[0])
-                    confidence_score = float(scores[0])
-                    
-                    # Categorías secundarias
-                    secondary_categories = [
-                        self._map_zero_shot_label_to_category(label)
-                        for label, score in zip(labels[1:3], scores[1:3])
-                        if score > 0.3
-                    ]
-                else:
-                    primary_category = "other"
-                    confidence_score = 0.5
-                    secondary_categories = []
+                # Categorías secundarias - solo si tienen score razonable
+                secondary_categories = []
+                for i in range(1, min(3, len(labels))):
+                    if scores[i] > 0.15:  # Umbral más bajo para categorías secundarias
+                        secondary_categories.append(labels[i])
+                
+                print(f"✅ Clasificación exitosa: {primary_category} ({confidence_score:.3f})")
+                
+            else:
+                # Fallback a clasificación por palabras clave
+                print("⚠️ Resultados HF vacíos, usando clasificación por palabras clave")
+                primary_category = self._classify_by_keywords(text_input)
+                confidence_score = 0.6
+                secondary_categories = []
             
             # Generar recomendaciones basadas en la categoría
             recommendations = self._generate_recommendations(primary_category, confidence_score)
@@ -574,33 +568,43 @@ Analiza cuidadosamente y responde SOLO con el JSON válido."""
     def get_model_info(self) -> Dict[str, Any]:
         """Información del modelo de clasificación"""
         hf_status = "disponible" if HF_AVAILABLE and self.classifier is not None else "no disponible"
-        current_model = self.medical_model_name if self.use_medical_bert else "zero-shot classification"
+        current_model = self.medical_model_name if self.use_medical_bert else self.zero_shot_model
         
         return {
             "name": self.model_name,
             "version": self.version,
             "categories": self.categories,
-            "description": "Modelo de clasificación médica usando Hugging Face con fallback a LLM",
+            "description": "Modelo de clasificación médica usando Zero-Shot Classification con modelos especializados",
             "input_format": "Datos estructurados de anamnesis en JSON",
-            "output_format": "Clasificación con categoría, confianza y recomendaciones",
+            "output_format": "Clasificación con categoría, confianza real y recomendaciones",
             "huggingface_status": hf_status,
             "current_model": current_model,
             "use_medical_bert": self.use_medical_bert,
+            "classification_method": "zero-shot-classification",
             "fallback_available": True
         }
     
-    async def switch_model(self, use_medical_bert: bool = True):
-        """Cambiar entre modelo médico BERT y zero-shot"""
+    async def switch_model(self, use_medical_bert: bool = False):
+        """Cambiar entre modelo médico y modelo general para zero-shot"""
         if not HF_AVAILABLE:
             print("❌ Hugging Face no disponible")
             return False
         
+        old_setting = self.use_medical_bert
         self.use_medical_bert = use_medical_bert
         self.classifier = None  # Reset classifier
         
-        # Reinicializar con nuevo modelo
-        await self._initialize_models()
-        return True
+        try:
+            # Reinicializar con nuevo modelo
+            await self._initialize_models()
+            model_type = "médico" if use_medical_bert else "general"
+            print(f"✅ Cambiado a modelo {model_type}")
+            return True
+        except Exception as e:
+            print(f"❌ Error cambiando modelo: {e}")
+            # Revertir cambio si falla
+            self.use_medical_bert = old_setting
+            return False
 
 
 # Instancia global del modelo
