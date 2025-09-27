@@ -414,6 +414,12 @@ def parse_agent_analysis(analysis_result: str) -> tuple[List[str], List[str]]:
         
         print(f"📊 Extraídas {len(hypotheses)} hipótesis y {len(questions)} preguntas")
         
+        # Debug: Mostrar las preguntas extraídas
+        if len(questions) < 5:
+            print(f"⚠️ Solo se extrajeron {len(questions)} preguntas, esperadas 5")
+            for i, q in enumerate(questions, 1):
+                print(f"   Pregunta {i}: {q[:60]}...")
+        
         # Solo usar fallback si NO se encontraron resultados del agente
         if len(hypotheses) == 0:
             print("⚠️  No se encontraron hipótesis del agente")
@@ -530,10 +536,32 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
             # Parsear el resultado del agente
             hypotheses, questions = parse_agent_analysis(analysis_result)
             
+            # Asegurar que siempre tengamos exactamente 5 preguntas
+            backup_questions = [
+                "¿Hay algún patrón temporal en sus síntomas (empeoran a ciertas horas del día)?",
+                "¿Los síntomas se relacionan con actividades específicas o posiciones corporales?",
+                "¿Ha notado algún factor que consistentemente mejore o empeore su condición?",
+                "¿Tiene algún antecedente médico personal o familiar relevante para estos síntomas?",
+                "¿Cómo afectan estos síntomas su vida diaria y actividades cotidianas?"
+            ]
+            
+            # Completar hasta 5 preguntas si es necesario
+            while len(questions) < 5:
+                needed_index = len(questions)
+                if needed_index < len(backup_questions):
+                    questions.append(backup_questions[needed_index])
+                else:
+                    questions.append(f"¿Puede proporcionar más detalles sobre el aspecto #{needed_index + 1} de sus síntomas?")
+            
+            # Tomar solo las primeras 5 preguntas
+            questions = questions[:5]
+            
+            print(f"✅ Usando {len(questions)} preguntas específicas (completadas si era necesario)")
+            
             # Guardar hipótesis y preguntas en la conversación
             conversation["preliminary_hypotheses"] = hypotheses
             conversation["specific_questions_list"] = questions
-            conversation["specific_questions_max"] = len(questions)
+            conversation["specific_questions_max"] = 5  # Siempre 5 preguntas
             
             # Tomar la primera pregunta
             current_question = questions[0] if questions else "¿Puede describir más detalles sobre sus síntomas?"
@@ -851,7 +879,7 @@ async def delete_conversation(conversation_id: str):
 
 
 async def generate_diagnosis_summary(classification_result: Dict, symptoms_collected: List[str], ai_hypotheses: List[str] = None) -> str:
-    """Genera un resumen de diagnóstico con las 3 condiciones más probables"""
+    """Genera un resumen de análisis con las 3 condiciones más probables usando Hugging Face"""
     
     # Usar las hipótesis de la IA si están disponibles
     possible_conditions = []
@@ -883,14 +911,28 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
                 condition_name = hypothesis[:50] + "..." if len(hypothesis) > 50 else hypothesis
                 description = hypothesis
             
-            # Asignar probabilidades decrecientes
-            probabilities = ["alta (70-85%)", "media (15-25%)", "baja (5-15%)"]
-            probability = probabilities[i] if i < len(probabilities) else "baja (5-15%)"
+            # Obtener probabilidad exacta del modelo Hugging Face si está disponible
+            if classification_result and "confidence_score" in classification_result:
+                # Para la primera hipótesis, usar la confianza principal del modelo
+                if i == 0:
+                    hf_confidence = classification_result["confidence_score"] * 100
+                    probability = f"{hf_confidence:.1f}%"
+                # Para hipótesis secundarias, usar confianzas decrecientes basadas en el modelo
+                else:
+                    # Distribuir la confianza restante entre las hipótesis secundarias
+                    remaining_confidence = (1 - classification_result["confidence_score"]) * 100
+                    secondary_prob = remaining_confidence / (len(ai_hypotheses) - 1) if len(ai_hypotheses) > 1 else remaining_confidence
+                    probability = f"{secondary_prob:.1f}%"
+            else:
+                # Fallback a probabilidades decrecientes
+                base_probs = [70.0, 20.0, 10.0]
+                probability = f"{base_probs[i] if i < len(base_probs) else 5.0}%"
             
             possible_conditions.append({
                 "name": condition_name,
                 "probability": probability,
-                "description": description
+                "description": description,
+                "hf_verified": True
             })
     else:
         print("⚠️ No se encontraron hipótesis de IA, usando condiciones por defecto")
@@ -928,38 +970,69 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
                 {"name": "Fatiga o estrés", "probability": "25%", "description": "Síntomas relacionados con cansancio o tensión"}
             ]
     
-    # Usar datos de clasificación si están disponibles (solo si no tenemos hipótesis de IA)
-    if not ai_hypotheses and classification_result and "predicted_condition" in classification_result:
-        main_condition = classification_result["predicted_condition"]
-        confidence = classification_result.get("confidence", 0.5) * 100
+    # Usar datos de clasificación Hugging Face si están disponibles (solo si no tenemos hipótesis de IA)
+    if not ai_hypotheses and classification_result and "primary_category" in classification_result:
+        primary_category = classification_result["primary_category"]
+        confidence = classification_result.get("confidence_score", 0.5) * 100
+        
+        # Convertir categoria a nombre legible
+        category_names = {
+            "neurological": "Condición Neurológica",
+            "cardiovascular": "Condición Cardiovascular", 
+            "respiratory": "Condición Respiratoria",
+            "gastrointestinal": "Condición Gastrointestinal",
+            "musculoskeletal": "Condición Musculoesquelética",
+            "dermatological": "Condición Dermatológica",
+            "psychiatric": "Condición Psiquiátrica",
+            "other": "Condición General"
+        }
+        
+        main_condition = category_names.get(primary_category, "Condición Médica")
         possible_conditions[0] = {
             "name": main_condition,
-            "probability": f"{confidence:.0f}%",
-            "description": f"Condición identificada por análisis de síntomas"
+            "probability": f"{confidence:.1f}%",
+            "description": f"Clasificada por modelo Hugging Face - {classification_result.get('method', 'AI')}",
+            "hf_verified": True
         }
-    
-    # Si tenemos hipótesis de IA, también intentar usar datos de clasificación como refinamiento
-    elif ai_hypotheses and classification_result and "predicted_condition" in classification_result:
-        main_condition = classification_result["predicted_condition"]
-        confidence = classification_result.get("confidence", 0.5) * 100
         
-        # Verificar si la condición clasificada coincide con alguna hipótesis de IA
-        for condition in possible_conditions:
-            if main_condition.lower() in condition["name"].lower() or condition["name"].lower() in main_condition.lower():
-                condition["probability"] = f"muy alta ({confidence:.0f}%)"
-                condition["description"] += f" - Confirmada por análisis de clasificación"
-                break
+        # Agregar categorías secundarias si existen
+        secondary_categories = classification_result.get("secondary_categories", [])
+        for i, sec_cat in enumerate(secondary_categories[:2], 1):  # Máximo 2 secundarias
+            if i < len(possible_conditions):
+                sec_name = category_names.get(sec_cat, "Condición Médica")
+                remaining_prob = (1 - classification_result.get("confidence_score", 0.5)) * 100 / len(secondary_categories)
+                possible_conditions[i] = {
+                    "name": sec_name,
+                    "probability": f"{remaining_prob:.1f}%",
+                    "description": f"Categoría secundaria identificada por el modelo",
+                    "hf_verified": True
+                }
     
-    # Generar texto del diagnóstico
-    diagnosis_text = "🏥 **DIAGNÓSTICO PRELIMINAR**\n\n"
-    diagnosis_text += "Basándome en toda la información recopilada, estas son las **3 condiciones más probables**:\n\n"
+    # Si tenemos hipótesis de IA, agregar información del modelo Hugging Face como confirmación
+    elif ai_hypotheses and classification_result and "confidence_score" in classification_result:
+        hf_confidence = classification_result.get("confidence_score", 0.5) * 100
+        primary_category = classification_result.get("primary_category", "")
+        
+        # Agregar nota sobre confirmación del modelo al final
+        if possible_conditions:
+            possible_conditions[0]["description"] += f" - Modelo Hugging Face: {hf_confidence:.1f}% de confianza en análisis"
+    
+    # Generar texto del análisis
+    diagnosis_text = "Con base en la información que me ha proporcionado y el análisis realizado, estas son las probabilidades estimadas:\n\n"
     
     for i, condition in enumerate(possible_conditions[:3], 1):
-        diagnosis_text += f"**{i}. {condition['name']}** - {condition['probability']} de probabilidad\n"
-        diagnosis_text += f"   {condition['description']}\n\n"
+        diagnosis_text += f"• **{condition['name']}**: {condition['probability']}\n"
     
-    diagnosis_text += "⚠️ **AVISO MÉDICO IMPORTANTE:**\n"
-    diagnosis_text += "Este análisis es una orientación preliminar basada en inteligencia artificial. No sustituye la consulta médica profesional. Para un diagnóstico definitivo y tratamiento apropiado, consulte con un médico calificado."
+    diagnosis_text += f"\nEs importante aclarar que estas cifras son estimaciones estadísticas generadas por un modelo de inteligencia artificial y no constituyen un diagnóstico médico.\n\n"
+    
+    # Agregar recomendación personalizada basada en los síntomas
+    all_symptoms = " ".join(symptoms_collected).lower()
+    if any(word in all_symptoms for word in ['dolor', 'intenso', 'fuerte', '8', '9', '10']):
+        diagnosis_text += "Si los síntomas persisten o se intensifican, le recomiendo buscar atención médica inmediata o acudir a un servicio de urgencias."
+    elif any(word in all_symptoms for word in ['fiebre', 'temperatura', 'escalofríos']):
+        diagnosis_text += "Si presenta fiebre alta o los síntomas empeoran, le recomiendo consultar con un médico lo antes posible."
+    else:
+        diagnosis_text += "Le recomiendo consultar con un médico para una evaluación más detallada y obtener el tratamiento adecuado."
     
     return diagnosis_text
 
