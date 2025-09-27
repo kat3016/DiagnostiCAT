@@ -11,6 +11,7 @@ from datetime import datetime
 import uuid
 
 from app.core.config import settings
+from app.crew.tools import classify_medical_data, json_validator, medical_data_formatter
 
 
 @CrewBase
@@ -57,75 +58,58 @@ class AnamnesisConversacionalCrew:
         return result
 
     @agent
-    def initial_interviewer(self) -> Agent:
-        """Agente para entrevista inicial con preguntas fijas"""
+    def conversational_interviewer(self) -> Agent:
+        """Agente para entrevista conversacional con preguntas fijas"""
         return Agent(
-            config=self.agents_config['initial_interviewer'],
+            config=self.agents_config['conversational_interviewer'],
             verbose=True,
             allow_delegation=False,
             max_execution_time=300  # 5 minutos máximo
         )
 
     @agent
-    def preliminary_analyst(self) -> Agent:
-        """Agente para análisis preliminar e hipótesis"""
+    def specific_questions_analyst(self) -> Agent:
+        """Agente para análisis y preguntas específicas"""
         return Agent(
-            config=self.agents_config['preliminary_analyst'],
+            config=self.agents_config['specific_questions_analyst'],
             verbose=True,
             allow_delegation=False,
             max_execution_time=180  # 3 minutos máximo
         )
 
     @agent
-    def data_structurer(self) -> Agent:
-        """Agente para estructuración de datos en JSON"""
+    def json_data_structurer(self) -> Agent:
+        """Agente para estructuración JSON y comunicación con modelo de clasificación"""
         return Agent(
-            config=self.agents_config['data_structurer'],
+            config=self.agents_config['json_data_structurer'],
             verbose=True,
             allow_delegation=False,
-            max_execution_time=120  # 2 minutos máximo
-        )
-
-    @agent
-    def medical_classifier(self) -> Agent:
-        """Agente para clasificación médica"""
-        return Agent(
-            config=self.agents_config['medical_classifier'],
-            verbose=True,
-            allow_delegation=False,
-            max_execution_time=180  # 3 minutos máximo
+            max_execution_time=300,  # 5 minutos máximo (incluye tiempo de clasificación)
+            tools=[classify_medical_data, json_validator, medical_data_formatter]  # Herramientas para comunicarse con el modelo HF
         )
 
     @task
-    def initial_interview_task(self) -> Task:
-        """Tarea de entrevista inicial"""
+    def conversational_interview_task(self) -> Task:
+        """Tarea de entrevista conversacional"""
         return Task(
-            config=self.tasks_config['initial_interview_task'],
-            agent=self.initial_interviewer()
+            config=self.tasks_config['conversational_interview_task'],
+            agent=self.conversational_interviewer()
         )
 
     @task
-    def preliminary_analysis_task(self) -> Task:
-        """Tarea de análisis preliminar"""
+    def specific_questions_analysis_task(self) -> Task:
+        """Tarea de análisis y preguntas específicas"""
         return Task(
-            config=self.tasks_config['preliminary_analysis_task'],
-            agent=self.preliminary_analyst()
+            config=self.tasks_config['specific_questions_analysis_task'],
+            agent=self.specific_questions_analyst()
         )
 
     @task
-    def data_structuring_task(self) -> Task:
-        """Tarea de estructuración de datos"""
+    def json_structuring_and_classification_task(self) -> Task:
+        """Tarea de estructuración JSON y clasificación con modelo externo"""
         return Task(
-            config=self.tasks_config['data_structuring_task'],
-            agent=self.data_structurer()
-        )
-
-    @task
-    def medical_classification_task(self) -> Task:
-        """Tarea de clasificación médica"""
-        return Task(
-            config=self.tasks_config['medical_classification_task'],
-            agent=self.medical_classifier()
+            config=self.tasks_config['json_structuring_and_classification_task'],
+            agent=self.json_data_structurer()
         )
 
     @crew
@@ -141,12 +125,12 @@ class AnamnesisConversacionalCrew:
         )
     
     def run_interview_only(self, inputs: Dict[str, Any]) -> str:
-        """Ejecutar solo la entrevista inicial (para uso interactivo)"""
+        """Ejecutar solo la entrevista conversacional (para uso interactivo)"""
         
-        # Crear crew solo con entrevista inicial
+        # Crear crew solo con entrevista conversacional
         interview_crew = Crew(
-            agents=[self.initial_interviewer()],
-            tasks=[self.initial_interview_task()],
+            agents=[self.conversational_interviewer()],
+            tasks=[self.conversational_interview_task()],
             process=Process.sequential,
             verbose=True
         )
@@ -155,11 +139,11 @@ class AnamnesisConversacionalCrew:
         return result.raw if hasattr(result, 'raw') else str(result)
     
     def run_analysis_only(self, inputs: Dict[str, Any]) -> str:
-        """Ejecutar solo análisis preliminar"""
+        """Ejecutar solo análisis y preguntas específicas"""
         
         analysis_crew = Crew(
-            agents=[self.preliminary_analyst()],
-            tasks=[self.preliminary_analysis_task()],
+            agents=[self.specific_questions_analyst()],
+            tasks=[self.specific_questions_analysis_task()],
             process=Process.sequential,
             verbose=True
         )
@@ -167,30 +151,23 @@ class AnamnesisConversacionalCrew:
         result = analysis_crew.kickoff(inputs=inputs)
         return result.raw if hasattr(result, 'raw') else str(result)
     
-    def run_structuring_only(self, inputs: Dict[str, Any]) -> str:
-        """Ejecutar solo estructuración de datos"""
+    def run_structuring_and_classification(self, inputs: Dict[str, Any]) -> str:
+        """Ejecutar estructuración JSON y clasificación con modelo Hugging Face"""
+        
+        # Importar el modelo de clasificación aquí para evitar dependencias circulares
+        from app.services.classification_service import classification_model
+        
+        # Agregar el modelo de clasificación a los inputs para que el agente pueda usarlo
+        inputs['classification_model'] = classification_model
         
         structuring_crew = Crew(
-            agents=[self.data_structurer()],
-            tasks=[self.data_structuring_task()],
+            agents=[self.json_data_structurer()],
+            tasks=[self.json_structuring_and_classification_task()],
             process=Process.sequential,
             verbose=True
         )
         
         result = structuring_crew.kickoff(inputs=inputs)
-        return result.raw if hasattr(result, 'raw') else str(result)
-    
-    def run_classification_only(self, inputs: Dict[str, Any]) -> str:
-        """Ejecutar solo clasificación médica"""
-        
-        classification_crew = Crew(
-            agents=[self.medical_classifier()],
-            tasks=[self.medical_classification_task()],
-            process=Process.sequential,
-            verbose=True
-        )
-        
-        result = classification_crew.kickoff(inputs=inputs)
         return result.raw if hasattr(result, 'raw') else str(result)
     
     def get_crew_info(self) -> Dict[str, Any]:
