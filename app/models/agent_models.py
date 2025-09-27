@@ -9,12 +9,10 @@ from enum import Enum
 
 
 class AgentType(str, Enum):
-    """Tipos de agentes médicos"""
-    GENERAL_PRACTITIONER = "general_practitioner"
-    TRIAGE_NURSE = "triage_nurse"
-    SPECIALIST = "specialist"
-    EMERGENCY_DOCTOR = "emergency_doctor"
-    MENTAL_HEALTH = "mental_health"
+    """Tipos de agentes según el flujo específico"""
+    INITIAL_INTERVIEW = "initial_interview"
+    PRELIMINARY_ANALYSIS = "preliminary_analysis"
+    DATA_STRUCTURING = "data_structuring"
 
 
 class AgentStatus(str, Enum):

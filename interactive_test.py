@@ -43,11 +43,11 @@ def test_quick_chat():
         chat_data = {"message": message, "patient_context": context}
         result = make_request("POST", "/api/v1/chat/", data=chat_data)
         
-        if result:
-            print(f"\n🤖 {result['agent_type']}:")
-            print(f"📝 {result['response']}")
-            print(f"⚠️  Severidad: {result['severity_assessment']}")
-            print(f"📊 Confianza: {result.get('confidence_score', 0):.2f}")
+            if result:
+                print(f"\n🤖 Dr. García - Médico General:")
+                print(f"📝 {result['response']}")
+                print(f"⚠️  Severidad: {result['severity_assessment']}")
+                print(f"📊 Confianza: {result.get('confidence_score', 0):.2f}")
 
 def test_anamnesis_manual():
     """Anamnesis paso a paso manual"""
@@ -154,7 +154,7 @@ def test_scenarios():
             })
             
             if result:
-                print(f"\n🤖 {result['agent_type']}:")
+                print(f"\n🤖 Dr. García - Médico General:")
                 print(f"📝 {result['response']}")
                 print(f"⚠️  Severidad: {result['severity_assessment']}")
                 if result.get('suggestions'):
