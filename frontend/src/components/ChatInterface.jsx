@@ -12,6 +12,7 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isConsentDenied, setIsConsentDenied] = useState(false); // Nuevo estado para controlar si se negó el consentimiento
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -57,11 +58,12 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
           isWelcome: true
         }
       ]);
+      setIsConsentDenied(false); // Resetear estado de consentimiento denegado
     }
   }, [conversationId]);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    if (!inputMessage.trim() || isLoading || isConsentDenied) return;
 
     const userMessage = {
       role: 'user',
@@ -75,6 +77,33 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
+
+    // Detectar si el usuario está negando el consentimiento
+    const userMessageLower = messageToSend.toLowerCase().trim();
+    const negativePatterns = [
+      'no acepto', 'no', 'niego', 'rechazo', 'rechaza', 'no autorizo',
+      'no estoy de acuerdo', 'en desacuerdo'
+    ];
+
+    const isConsentNegative = negativePatterns.some(pattern => 
+      userMessageLower.includes(pattern)
+    );
+
+    if (isConsentNegative && !conversationId) {
+      // Usuario negó el consentimiento - bloquear el chat
+      setIsConsentDenied(true);
+      setIsLoading(false);
+      
+      const denialMessage = {
+        role: 'assistant',
+        content: '❌ **Consentimiento Denegado**\n\n🚫 Entiendo que no desea otorgar el consentimiento para procesar información médica.\n\n🔒 **El chat ha sido bloqueado** según su decisión.\n\nSin su consentimiento, no puedo proceder con la recopilación de información médica.\n\n🔄 Si cambia de opinión, puede usar el botón "**Reiniciar Conversación**" que aparece abajo para comenzar de nuevo.\n\n¡Que tenga un buen día! 👋',
+        timestamp: new Date(),
+        isConsentDenied: true
+      };
+      
+      setMessages(prev => [...prev, denialMessage]);
+      return;
+    }
 
     try {
       // Importar dinámicamente el servicio
@@ -115,18 +144,26 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      // Mantener el foco en el input después de enviar el mensaje
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+      // Mantener el foco en el input después de enviar el mensaje (solo si el chat no está bloqueado)
+      if (!isConsentDenied) {
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, 100);
+      }
     }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isConsentDenied) {
       e.preventDefault();
       sendMessage();
     }
+  };
+
+  const restartConversation = () => {
+    setIsConsentDenied(false);
+    setInputMessage('');
+    onNewConversation(null); // Esto activará el useEffect que resetea los mensajes
   };
 
   const getSeverityColor = (severity) => {
@@ -264,31 +301,56 @@ const ChatInterface = ({ conversationId, onNewConversation }) => {
       </div>
 
       <div className="chat-input-container">
-        <div className="chat-input">
-          <textarea
-            ref={inputRef}
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            onFocus={(e) => e.target.selectionStart = e.target.value.length} // Cursor al final cuando obtiene foco
-            placeholder="Describa sus síntomas o haga su consulta médica..."
-            rows="3"
-            disabled={isLoading}
-            autoFocus={true}
-            style={{
-              resize: 'none',
-              outline: 'none'
-            }}
-          />
-          <button 
-            onClick={sendMessage}
-            disabled={!inputMessage.trim() || isLoading}
-            className="send-button"
-            onMouseDown={(e) => e.preventDefault()} // Evita que el botón quite el foco del textarea
-          >
-            {isLoading ? '...' : '→'}
-          </button>
-        </div>
+        {isConsentDenied ? (
+          // Mostrar botón de reiniciar cuando el consentimiento está denegado
+          <div className="chat-blocked-state">
+            <div className="blocked-message">
+              🚫 **Chat Bloqueado**: Consentimiento denegado
+            </div>
+            <button 
+              onClick={restartConversation}
+              className="restart-button"
+            >
+              🔄 Reiniciar Conversación
+            </button>
+            <div className="blocked-disclaimer">
+              Si cambia de opinión, puede reiniciar la conversación
+            </div>
+          </div>
+        ) : (
+          // Input normal cuando el chat no está bloqueado
+          <>
+            <div className="chat-input">
+              <textarea
+                ref={inputRef}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                onFocus={(e) => e.target.selectionStart = e.target.value.length} // Cursor al final cuando obtiene foco
+                placeholder="Describa sus síntomas o haga su consulta médica..."
+                rows="3"
+                disabled={isLoading}
+                autoFocus={true}
+                style={{
+                  resize: 'none',
+                  outline: 'none'
+                }}
+              />
+              <button 
+                onClick={sendMessage}
+                disabled={!inputMessage.trim() || isLoading}
+                className="send-button"
+                onMouseDown={(e) => e.preventDefault()} // Evita que el botón quite el foco del textarea
+              >
+                {isLoading ? '...' : '→'}
+              </button>
+            </div>
+            
+            <div className="chat-disclaimer">
+              ⚠️ Esta es una herramienta de orientación. En emergencias, llame al 123.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
