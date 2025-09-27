@@ -13,6 +13,7 @@ class AgentType(str, Enum):
     INITIAL_INTERVIEW = "initial_interview"
     PRELIMINARY_ANALYSIS = "preliminary_analysis"
     DATA_STRUCTURING = "data_structuring"
+    GENERAL_PRACTITIONER = "general_practitioner"
 
 
 class AgentStatus(str, Enum):
