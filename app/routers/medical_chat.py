@@ -20,6 +20,7 @@ class ConversationState:
     AWAITING_CONSENT = "awaiting_consent"
     CONSENT_GIVEN = "consent_given"
     COLLECTING_SYMPTOMS = "collecting_symptoms"
+    SPECIFIC_QUESTIONS = "specific_questions"  # 🆕 Nueva fase
     READY_FOR_CLASSIFICATION = "ready_for_classification"
     CLASSIFICATION_COMPLETE = "classification_complete"
     COMPLETED = "completed"
@@ -72,6 +73,10 @@ async def chat_with_agent(request: ChatRequest):
         # Manejar recolección de síntomas
         elif conversation["state"] == ConversationState.COLLECTING_SYMPTOMS:
             return await handle_symptom_collection(conversation_id, request.message)
+        
+        # 🆕 Manejar preguntas específicas del analyst
+        elif conversation["state"] == ConversationState.SPECIFIC_QUESTIONS:
+            return await handle_specific_questions(conversation_id, request.message)
         
         # Manejar clasificación y resultados
         elif conversation["state"] == ConversationState.READY_FOR_CLASSIFICATION:
@@ -278,15 +283,18 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     print(f"🔍 DEBUG: Symptoms collected: {conversation['symptoms_collected']}")
     print(f"🔍 DEBUG: Current message: {message}")
     
-    # Determinar si tenemos suficiente información para clasificar
+    # Determinar si tenemos suficiente información para pasar a preguntas específicas
     if (conversation["questions_asked"] >= conversation["min_questions"] and 
         len(conversation["symptoms_collected"]) >= 2) or \
        conversation["questions_asked"] >= conversation["max_questions"]:
         
-        print(f"🔍 DEBUG: Moving to classification phase")
-        # Cambiar estado y proceder con clasificación
-        conversation["state"] = ConversationState.READY_FOR_CLASSIFICATION
-        return await handle_classification(conversation_id, message)
+        print(f"🔍 DEBUG: Moving to specific questions phase")
+        # Cambiar estado y proceder con preguntas específicas
+        conversation["state"] = ConversationState.SPECIFIC_QUESTIONS
+        conversation["specific_questions_asked"] = 0
+        conversation["specific_questions_max"] = 5  # Máximo 5 preguntas específicas
+        conversation["specific_answers"] = []
+        return await handle_specific_questions(conversation_id, message)
     
     # Generar siguiente pregunta
     next_question = generate_next_question(conversation["symptoms_collected"], conversation["questions_asked"])
@@ -310,6 +318,88 @@ async def handle_symptom_collection(conversation_id: str, message: str) -> ChatR
     )
 
 
+async def handle_specific_questions(conversation_id: str, message: str) -> ChatResponse:
+    """Maneja las preguntas específicas del specific_questions_analyst"""
+    conversation = CONVERSATIONS[conversation_id]
+    
+    # Si es la primera vez en esta fase, generar hipótesis y primera pregunta específica
+    if conversation["specific_questions_asked"] == 0:
+        print(f"🔍 DEBUG: Starting specific questions phase")
+        
+        # Generar hipótesis preliminares basadas en síntomas recopilados
+        hypotheses = generate_preliminary_hypotheses(conversation["symptoms_collected"])
+        conversation["preliminary_hypotheses"] = hypotheses
+        
+        # Generar primera pregunta específica
+        specific_question = generate_specific_question(
+            conversation["symptoms_collected"], 
+            hypotheses, 
+            conversation["specific_questions_asked"]
+        )
+        
+        conversation["specific_questions_asked"] += 1
+        
+        response_text = f"✅ **ANÁLISIS INICIAL COMPLETADO**\n\nGracias por la información inicial. He identificado algunas hipótesis preliminares y ahora necesito hacer preguntas más específicas para un diagnóstico más preciso.\n\n🎯 **Pregunta específica {conversation['specific_questions_asked']}/5:**\n{specific_question}"
+        
+        conversation["messages"].append({
+            "role": MessageRole.ASSISTANT,
+            "content": response_text,
+            "timestamp": datetime.now()
+        })
+        
+        return ChatResponse(
+            response=response_text,
+            conversation_id=conversation_id,
+            agent_type="specific_questions_analyst",
+            confidence_score=0.9,
+            severity_assessment="MEDIO",
+            suggestions=[],
+            follow_up_questions=[]
+        )
+    
+    else:
+        # Procesar respuesta y generar siguiente pregunta o proceder a clasificación
+        conversation["specific_answers"].append({
+            "question_number": conversation["specific_questions_asked"],
+            "answer": message
+        })
+        
+        print(f"🔍 DEBUG: Specific questions asked: {conversation['specific_questions_asked']}/{conversation['specific_questions_max']}")
+        
+        # Verificar si ya tenemos suficientes respuestas específicas
+        if conversation["specific_questions_asked"] >= conversation["specific_questions_max"]:
+            print(f"🔍 DEBUG: Moving to final classification phase")
+            conversation["state"] = ConversationState.READY_FOR_CLASSIFICATION
+            return await handle_classification(conversation_id, message)
+        
+        # Generar siguiente pregunta específica
+        specific_question = generate_specific_question(
+            conversation["symptoms_collected"], 
+            conversation["preliminary_hypotheses"], 
+            conversation["specific_questions_asked"]
+        )
+        
+        conversation["specific_questions_asked"] += 1
+        
+        response_text = f"🎯 **Pregunta específica {conversation['specific_questions_asked']}/5:**\n{specific_question}"
+        
+        conversation["messages"].append({
+            "role": MessageRole.ASSISTANT,
+            "content": response_text,
+            "timestamp": datetime.now()
+        })
+        
+        return ChatResponse(
+            response=response_text,
+            conversation_id=conversation_id,
+            agent_type="specific_questions_analyst",
+            confidence_score=0.9,
+            severity_assessment="MEDIO",
+            suggestions=[],
+            follow_up_questions=[]
+        )
+
+
 async def handle_classification(conversation_id: str, message: str) -> ChatResponse:
     """Maneja la clasificación usando Hugging Face"""
     conversation = CONVERSATIONS[conversation_id]
@@ -318,12 +408,15 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
         # Importar el servicio de clasificación
         from app.services.classification_service import classification_model
         
-        # Preparar datos para clasificación
+        # Preparar datos para clasificación (incluyendo respuestas específicas)
         structured_data = {
             "symptoms": conversation["symptoms_collected"],
             "chief_complaint": conversation["symptoms_collected"][0] if conversation["symptoms_collected"] else "consulta general",
             "messages": [msg["content"] for msg in conversation["messages"] if msg["role"] == MessageRole.USER],
-            "questions_answered": conversation["questions_asked"]
+            "questions_answered": conversation["questions_asked"],
+            "specific_answers": conversation.get("specific_answers", []),
+            "preliminary_hypotheses": conversation.get("preliminary_hypotheses", []),
+            "total_information_points": len(conversation["symptoms_collected"]) + len(conversation.get("specific_answers", []))
         }
         
         # print(f"🔍 DEBUG: Iniciando clasificación con datos: {structured_data}")
@@ -557,7 +650,7 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
     # Condiciones predeterminadas basadas en síntomas comunes
     possible_conditions = []
     
-    # Extraer información de los síntomas
+    # Extraer información de los síntomas (ahora incluyendo respuestas específicas)
     all_symptoms = " ".join(symptoms_collected).lower()
     
     if "dolor" in all_symptoms and ("cabeza" in all_symptoms or "neurological" in all_symptoms):
@@ -625,3 +718,115 @@ async def generate_diagnosis_summary(classification_result: Dict, symptoms_colle
         diagnosis_text += "💡 **RECOMENDACIÓN:** Monitoree síntomas y consulte si empeoran"
     
     return diagnosis_text
+
+
+def generate_preliminary_hypotheses(symptoms_collected: List[str]) -> List[Dict[str, str]]:
+    """Genera hipótesis preliminares basadas en los síntomas recopilados"""
+    all_symptoms = " ".join(symptoms_collected).lower()
+    hypotheses = []
+    
+    # Hipótesis basadas en síntomas neurológicos
+    if any(word in all_symptoms for word in ['cabeza', 'dolor de cabeza', 'cefalea', 'mareo']):
+        hypotheses.extend([
+            {"name": "Cefalea tensional", "category": "neurological", "probability": "alta"},
+            {"name": "Migraña", "category": "neurological", "probability": "media"},
+            {"name": "Cefalea secundaria", "category": "neurological", "probability": "baja"}
+        ])
+    
+    # Hipótesis basadas en síntomas respiratorios
+    elif any(word in all_symptoms for word in ['tos', 'pecho', 'respirar', 'ahogo']):
+        hypotheses.extend([
+            {"name": "Infección respiratoria alta", "category": "respiratory", "probability": "alta"},
+            {"name": "Bronquitis", "category": "respiratory", "probability": "media"},
+            {"name": "Asma leve", "category": "respiratory", "probability": "baja"}
+        ])
+    
+    # Hipótesis basadas en síntomas cardiovasculares
+    elif any(word in all_symptoms for word in ['corazón', 'palpitaciones', 'pecho y dolor']):
+        hypotheses.extend([
+            {"name": "Taquicardia benigna", "category": "cardiovascular", "probability": "alta"},
+            {"name": "Ansiedad cardíaca", "category": "cardiovascular", "probability": "media"},
+            {"name": "Arritmia leve", "category": "cardiovascular", "probability": "baja"}
+        ])
+    
+    # Hipótesis basadas en síntomas musculoesqueléticos
+    elif any(word in all_symptoms for word in ['dolor', 'músculo', 'articulación', 'espalda', 'rodilla']):
+        hypotheses.extend([
+            {"name": "Dolor muscular", "category": "musculoskeletal", "probability": "alta"},
+            {"name": "Artritis leve", "category": "musculoskeletal", "probability": "media"},
+            {"name": "Lesión deportiva", "category": "musculoskeletal", "probability": "baja"}
+        ])
+    
+    # Hipótesis generales si no se identifica categoría específica
+    else:
+        hypotheses.extend([
+            {"name": "Malestar general", "category": "general", "probability": "alta"},
+            {"name": "Síndrome viral", "category": "general", "probability": "media"},
+            {"name": "Fatiga crónica", "category": "general", "probability": "baja"}
+        ])
+    
+    return hypotheses[:3]  # Máximo 3 hipótesis
+
+
+def generate_specific_question(symptoms_collected: List[str], hypotheses: List[Dict], question_number: int) -> str:
+    """Genera preguntas específicas basadas en síntomas e hipótesis"""
+    
+    all_symptoms = " ".join(symptoms_collected).lower()
+    
+    # Preguntas específicas basadas en la categoría principal de hipótesis
+    main_category = hypotheses[0]["category"] if hypotheses else "general"
+    
+    neurological_questions = [
+        "¿El dolor de cabeza se localiza en un área específica o es generalizado?",
+        "¿Ha notado cambios en su visión, sensibilidad a la luz o náuseas?",
+        "¿El dolor empeora con el movimiento o permanece constante?",
+        "¿Ha tenido episodios similares en el pasado? ¿Con qué frecuencia?",
+        "¿Hay factores específicos que desencadenan el dolor (estrés, ciertos alimentos, falta de sueño)?"
+    ]
+    
+    respiratory_questions = [
+        "¿La tos es seca o produce flemas? ¿De qué color?",
+        "¿Siente dificultad para respirar en reposo o solo al hacer esfuerzo?",
+        "¿Ha tenido fiebre o escalofríos junto con estos síntomas?",
+        "¿Los síntomas empeoran en ciertos momentos del día?",
+        "¿Ha estado expuesto a irritantes, alérgenos o personas enfermas recientemente?"
+    ]
+    
+    cardiovascular_questions = [
+        "¿Las palpitaciones ocurren en reposo o durante actividad física?",
+        "¿Ha sentido dolor en el pecho, mareos o desmayos?",
+        "¿Nota que el ritmo cardíaco es irregular o solo rápido?",
+        "¿Los episodios duran segundos, minutos u horas?",
+        "¿Consume cafeína, alcohol o algún medicamento regularmente?"
+    ]
+    
+    musculoskeletal_questions = [
+        "¿El dolor aparece con el movimiento o también en reposo?",
+        "¿Hay hinchazón, enrojecimiento o calor en la zona afectada?",
+        "¿Ha tenido alguna lesión reciente o ha hecho ejercicio intenso?",
+        "¿El dolor se irradia hacia otras partes del cuerpo?",
+        "¿Qué posiciones o movimientos alivian o empeoran el dolor?"
+    ]
+    
+    general_questions = [
+        "¿Ha notado cambios en su apetito, peso o patrones de sueño?",
+        "¿Tiene antecedentes familiares de condiciones médicas similares?",
+        "¿Está tomando algún medicamento o suplemento actualmente?",
+        "¿Ha viajado recientemente o cambiado su rutina habitual?",
+        "¿Hay algo más que considere relevante sobre sus síntomas?"
+    ]
+    
+    # Seleccionar conjunto de preguntas según la categoría
+    if main_category == "neurological":
+        questions = neurological_questions
+    elif main_category == "respiratory":
+        questions = respiratory_questions
+    elif main_category == "cardiovascular":
+        questions = cardiovascular_questions
+    elif main_category == "musculoskeletal":
+        questions = musculoskeletal_questions
+    else:
+        questions = general_questions
+    
+    # Retornar la pregunta correspondiente al número
+    return questions[min(question_number - 1, len(questions) - 1)]
