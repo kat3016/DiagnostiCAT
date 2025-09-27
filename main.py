@@ -10,7 +10,8 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.routers import medical_chat, agents
+from app.routers import medical_chat
+from app.routers import consent_anamnesis
 from app.core.database import create_tables
 
 
@@ -84,9 +85,9 @@ app.include_router(
 )
 
 app.include_router(
-    agents.router,
-    prefix="/api/v1/agents",
-    tags=["Agentes de IA"]
+    consent_anamnesis.router,
+    prefix="/api/v1",
+    tags=["Consentimiento y Anamnesis"]
 )
 
 

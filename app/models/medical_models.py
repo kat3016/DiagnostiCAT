@@ -111,3 +111,23 @@ class ConversationHistory(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
+
+class AnamnesisRequest(BaseModel):
+    """Entrada para flujo de anamnesis paso a paso"""
+    motivo_consulta: Optional[str] = None
+    enfermedad_actual: Optional[Dict[str, Any]] = None  # {sintoma_principal, inicio, caracteristicas}
+    antecedentes_personales: Optional[List[str]] = None
+    antecedentes_familiares: Optional[List[str]] = None
+    habitos: Optional[Dict[str, Any]] = None  # {tabaquismo, alcohol, otros}
+    sintomas_asociados: Optional[List[str]] = None
+
+
+class AnamnesisStructured(BaseModel):
+    """Estructura estándar JSON de la anamnesis"""
+    motivo_consulta: str
+    enfermedad_actual: Dict[str, Any]
+    antecedentes_personales: List[str] = []
+    antecedentes_familiares: List[str] = []
+    habitos: Dict[str, Any] = {}
+    sintomas_asociados: List[str] = []
