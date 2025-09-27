@@ -50,22 +50,13 @@ class AgentService:
             print(f"❌ Error en análisis preliminar: {e}")
             raise
     
-    async def run_data_structuring(self, inputs: Dict[str, Any]) -> str:
-        """Ejecuta estructuración de datos"""
+    async def run_structuring_and_classification(self, inputs: Dict[str, Any]) -> str:
+        """Ejecuta estructuración de datos y clasificación con modelo Hugging Face"""
         try:
-            result = self.anamnesis_crew.run_structuring_only(inputs)
+            result = self.anamnesis_crew.run_structuring_and_classification(inputs)
             return result
         except Exception as e:
-            print(f"❌ Error en estructuración: {e}")
-            raise
-    
-    async def run_classification(self, inputs: Dict[str, Any]) -> str:
-        """Ejecuta clasificación médica"""
-        try:
-            result = self.anamnesis_crew.run_classification_only(inputs)
-            return result
-        except Exception as e:
-            print(f"❌ Error en clasificación: {e}")
+            print(f"❌ Error en estructuración y clasificación: {e}")
             raise
     
     async def run_complete_flow(self, inputs: Dict[str, Any]) -> Any:

@@ -20,10 +20,9 @@ FLOW_STATE: Dict[str, Dict[str, Any]] = {}
 class FlowPhase:
     """Fases del flujo de anamnesis"""
     CONSENT = "consent"
-    INITIAL_INTERVIEW = "initial_interview"
-    PRELIMINARY_ANALYSIS = "preliminary_analysis"
-    SPECIFIC_QUESTIONS = "specific_questions"
-    DATA_STRUCTURING = "data_structuring"
+    CONVERSATIONAL_INTERVIEW = "conversational_interview"
+    SPECIFIC_QUESTIONS_ANALYSIS = "specific_questions_analysis"
+    JSON_STRUCTURING_AND_CLASSIFICATION = "json_structuring_and_classification"
     COMPLETED = "completed"
 
 
@@ -40,7 +39,7 @@ async def request_consent(consent: ConsentRequest):
     
     # Inicializar estado del flujo
     FLOW_STATE[conversation_id] = {
-        "phase": FlowPhase.INITIAL_INTERVIEW,
+        "phase": FlowPhase.CONVERSATIONAL_INTERVIEW,
         "consent_given": True,
         "messages": [],
         "interview_data": {},
@@ -63,7 +62,7 @@ async def start_initial_interview(conversation_id: str):
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
     state = FLOW_STATE[conversation_id]
-    if state["phase"] != FlowPhase.INITIAL_INTERVIEW:
+    if state["phase"] != FlowPhase.CONVERSATIONAL_INTERVIEW:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
     try:
@@ -107,7 +106,7 @@ async def submit_interview_answer(conversation_id: str, answer: str):
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
     state = FLOW_STATE[conversation_id]
-    if state["phase"] != FlowPhase.INITIAL_INTERVIEW:
+    if state["phase"] != FlowPhase.CONVERSATIONAL_INTERVIEW:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
     # Registrar respuesta del usuario
@@ -124,7 +123,7 @@ async def submit_interview_answer(conversation_id: str, answer: str):
         questions_completed = len(user_responses)
         
         if questions_completed >= 7:  # 7 preguntas fijas completadas
-            state["phase"] = FlowPhase.PRELIMINARY_ANALYSIS
+            state["phase"] = FlowPhase.SPECIFIC_QUESTIONS_ANALYSIS
             
             # Guardar respuestas de entrevista
             state["interview_completed"] = True
@@ -182,7 +181,7 @@ async def generate_preliminary_analysis(conversation_id: str):
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
     state = FLOW_STATE[conversation_id]
-    if state["phase"] != FlowPhase.PRELIMINARY_ANALYSIS:
+    if state["phase"] != FlowPhase.SPECIFIC_QUESTIONS_ANALYSIS:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
     try:
@@ -209,8 +208,8 @@ async def generate_preliminary_analysis(conversation_id: str):
             "agent_used": "preliminary_analyst"
         }
         
-        # Cambiar a fase de preguntas específicas
-        state["phase"] = FlowPhase.SPECIFIC_QUESTIONS
+        # Cambiar a fase de estructuración y clasificación
+        state["phase"] = FlowPhase.JSON_STRUCTURING_AND_CLASSIFICATION
         
         return {
             "conversation_id": conversation_id,
@@ -246,18 +245,18 @@ async def answer_specific_questions(conversation_id: str, answers: List[str]):
     }
 
 
-@router.post("/data/structure")
-async def structure_data(conversation_id: str):
-    """Paso 5: Estructurar datos en formato estandarizado usando CrewAI"""
+@router.post("/structure-and-classify")
+async def structure_and_classify_data(conversation_id: str):
+    """Paso 4: Estructurar datos JSON y ejecutar clasificación con modelo Hugging Face"""
     if conversation_id not in FLOW_STATE:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     
     state = FLOW_STATE[conversation_id]
-    if state["phase"] != FlowPhase.DATA_STRUCTURING:
+    if state["phase"] != FlowPhase.JSON_STRUCTURING_AND_CLASSIFICATION:
         raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
     
     try:
-        # Preparar todos los datos para estructuración
+        # Preparar todos los datos para estructuración y clasificación
         inputs = {
             "consultation_topic": "consulta médica general",
             "conversation_id": conversation_id,
@@ -270,25 +269,28 @@ async def structure_data(conversation_id: str):
             ]
         }
         
-        # Ejecutar estructuración con CrewAI
-        structured_result = await agent_service.run_data_structuring(inputs)
+        # Ejecutar estructuración y clasificación con CrewAI + Hugging Face
+        complete_result = await agent_service.run_structuring_and_classification(inputs)
         
-        # Guardar datos estructurados
-        state["structured_data"] = structured_result
+        # Guardar resultado completo
+        state["structured_data"] = complete_result
         state["phase"] = FlowPhase.COMPLETED
         state["classification_ready"] = True
+        state["process_completed"] = True
         
         return {
             "conversation_id": conversation_id,
             "phase": state["phase"],
-            "structured_data": structured_result,
+            "complete_result": complete_result,
             "classification_ready": True,
-            "agent_used": "data_structurer",
-            "message": "Proceso de anamnesis conversacional completado exitosamente."
+            "process_completed": True,
+            "agent_used": "json_data_structurer",
+            "model_used": "hugging_face_medical_classifier",
+            "message": "Proceso completo de anamnesis conversacional y clasificación completado exitosamente."
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error estructurando datos: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en estructuración y clasificación: {str(e)}")
 
 
 @router.get("/flow/status/{conversation_id}")
@@ -332,62 +334,27 @@ async def get_final_data(conversation_id: str):
     }
 
 
-@router.post("/classify/{conversation_id}")
-async def classify_case(conversation_id: str):
-    """Ejecutar modelo de clasificación sobre los datos estructurados"""
-    if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
-    
-    state = FLOW_STATE[conversation_id]
-    if state["phase"] != FlowPhase.COMPLETED:
-        raise HTTPException(status_code=400, detail="Flujo no completado. Complete la estructuración de datos primero.")
-    
-    try:
-        # Preparar datos para clasificación con CrewAI
-        inputs = {
-            "consultation_topic": "consulta médica general",
-            "conversation_id": conversation_id,
-            "structured_data": state.get("structured_data", ""),
-            "interview_data": state.get("interview_data", {}),
-            "analysis_data": state.get("analysis_data", {}),
-            "specific_answers": state.get("specific_answers", [])
-        }
-        
-        # Ejecutar clasificación con CrewAI
-        classification_result = await agent_service.run_classification(inputs)
-        
-        # Guardar resultado de clasificación
-        state["classification_result"] = classification_result
-        
-        return {
-            "conversation_id": conversation_id,
-            "classification": classification_result,
-            "agent_used": "medical_classifier",
-            "model_info": {
-                "name": "CrewAI Medical Classification Agent",
-                "version": "1.0",
-                "categories": ["neurological", "cardiovascular", "respiratory", 
-                             "gastrointestinal", "musculoskeletal", "dermatological", 
-                             "psychiatric", "other"]
-            },
-            "timestamp": datetime.now()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en clasificación: {str(e)}")
+# ENDPOINT INTEGRADO EN /structure-and-classify - Ya no se usa por separado
 
 
 @router.get("/model/info")
 async def get_model_info():
-    """Información del modelo de clasificación CrewAI"""
+    """Información del modelo de clasificación CrewAI + Hugging Face"""
     return {
-        "name": "CrewAI Medical Classification Agent",
-        "version": "1.0",
-        "description": "Agente de clasificación médica usando CrewAI",
+        "name": "CrewAI + Hugging Face Medical Classification System",
+        "version": "2.0",
+        "description": "Sistema de clasificación médica usando CrewAI para estructuración y Hugging Face para clasificación",
+        "flow": [
+            "1. Agente Conversacional (CrewAI)",
+            "2. Agente de Preguntas Específicas (CrewAI)", 
+            "3. Agente de Estructuración JSON (CrewAI)",
+            "4. Modelo de Clasificación (Hugging Face)"
+        ],
         "categories": [
             "neurological", "cardiovascular", "respiratory", 
             "gastrointestinal", "musculoskeletal", "dermatological", 
             "psychiatric", "other"
         ],
-        "crew_info": agent_service.get_crew_info()
+        "crew_info": agent_service.get_crew_info(),
+        "hugging_face_model": "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
     }

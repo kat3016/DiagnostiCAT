@@ -1,6 +1,6 @@
-# Tareas CrewAI para flujo de anamnesis conversacional
+# Tareas CrewAI para flujo de anamnesis conversacional (3 tareas secuenciales)
 
-initial_interview_task:
+conversational_interview_task:
   description: >
     Realizar entrevista médica inicial estructurada siguiendo exactamente estas 7 preguntas obligatorias:
     1. "¿Cuál es el motivo principal de tu consulta hoy?"
@@ -12,14 +12,14 @@ initial_interview_task:
     7. "¿Fumas, consumes alcohol o tienes otros hábitos relevantes?"
     
     IMPORTANTE: 
-    - Hacer SOLO una pregunta por vez
+    - Hacer SOLO una pregunta por vez en modo conversacional
     - NO hacer preguntas adicionales fuera de esta lista
     - Mantener tono profesional y empático
     - NO dar consejos médicos, solo recopilar información
     - Esperar respuesta completa antes de continuar
   expected_output: >
     Un resumen estructurado de las 7 respuestas del paciente en formato:
-    ENTREVISTA INICIAL COMPLETADA:
+    ENTREVISTA CONVERSACIONAL COMPLETADA:
     1. Motivo consulta: [respuesta]
     2. Inicio síntomas: [respuesta]
     3. Intensidad (1-10): [respuesta]
@@ -27,20 +27,21 @@ initial_interview_task:
     5. Medicamentos actuales: [respuesta]
     6. Antecedentes familiares: [respuesta]
     7. Hábitos relevantes: [respuesta]
-  agent: initial_interviewer
+  agent: conversational_interviewer
   context: []
 
-preliminary_analysis_task:
+specific_questions_analysis_task:
   description: >
     Analizar la información de la entrevista inicial y generar:
     1. Máximo 3 hipótesis preliminares sobre posibles problemas de salud (SIN diagnósticos definitivos)
-    2. Exactamente 5 preguntas específicas para aclarar y enriquecer los datos
+    2. Exactamente 5 preguntas específicas para aclarar y enriquecer los datos para el modelo de clasificación
     
     Las preguntas específicas deben ser:
     - Precisas y dirigidas a síntomas específicos
-    - Orientadas a obtener datos para modelos de clasificación
+    - Orientadas a obtener datos para modelos de clasificación Hugging Face
     - Enfocadas en características, localización, factores agravantes/aliviantes
     - Relacionadas con las hipótesis preliminares generadas
+    - Diseñadas para maximizar la precisión del modelo de clasificación
   expected_output: >
     Análisis en formato:
     HIPÓTESIS PRELIMINARES:
@@ -48,29 +49,37 @@ preliminary_analysis_task:
     2. [hipótesis 2 - sin diagnóstico definitivo]  
     3. [hipótesis 3 - sin diagnóstico definitivo]
     
-    PREGUNTAS ESPECÍFICAS PARA CLASIFICACIÓN:
-    1. [pregunta específica orientada a datos]
-    2. [pregunta específica orientada a datos]
-    3. [pregunta específica orientada a datos]
-    4. [pregunta específica orientada a datos]
-    5. [pregunta específica orientada a datos]
-  agent: preliminary_analyst
+    PREGUNTAS ESPECÍFICAS PARA MODELO DE CLASIFICACIÓN:
+    1. [pregunta específica orientada a datos para ML]
+    2. [pregunta específica orientada a datos para ML]
+    3. [pregunta específica orientada a datos para ML]
+    4. [pregunta específica orientada a datos para ML]
+    5. [pregunta específica orientada a datos para ML]
+  agent: specific_questions_analyst
   context:
-    - initial_interview_task
+    - conversational_interview_task
 
-data_structuring_task:
+json_structuring_and_classification_task:
   description: >
-    Convertir TODA la información recopilada durante la anamnesis conversacional en formato JSON estandarizado.
+    TAREA DOBLE - Estructurar datos y ejecutar clasificación:
     
+    PARTE 1 - ESTRUCTURACIÓN:
+    Convertir TODA la información recopilada durante la anamnesis conversacional en formato JSON estandarizado.
     Incluir:
     - Datos de entrevista inicial (7 preguntas)
-    - Análisis preliminar e hipótesis
-    - Respuestas a preguntas específicas
+    - Hipótesis preliminares 
+    - Preguntas específicas y sus respuestas
     - Timestamp y metadata
     
-    El JSON debe ser válido y estar listo para entrada a modelos de clasificación médica.
+    PARTE 2 - CLASIFICACIÓN:
+    Enviar los datos estructurados al modelo de clasificación Hugging Face para obtener:
+    - Categoría médica principal
+    - Nivel de confianza
+    - Recomendaciones
+    
+    El JSON debe ser válido y optimizado para el modelo de clasificación médica Hugging Face.
   expected_output: >
-    JSON estandarizado válido con estructura:
+    JSON completo con datos estructurados Y resultado de clasificación:
     {
       "patient_id": "auto-generado",
       "timestamp": "ISO format",
@@ -84,7 +93,7 @@ data_structuring_task:
         "family_history": "antecedentes familiares",
         "habits": "hábitos relevantes"
       },
-      "preliminary_analysis": {
+      "specific_analysis": {
         "hypotheses": ["hip1", "hip2", "hip3"],
         "specific_questions": ["q1", "q2", "q3", "q4", "q5"],
         "specific_answers": ["resp1", "resp2", "resp3", "resp4", "resp5"]
@@ -96,49 +105,18 @@ data_structuring_task:
         "associated_factors": ["factores"],
         "risk_factors": ["riesgos"]
       },
-      "classification_ready": true
+      "classification_result": {
+        "primary_category": "categoria_principal",
+        "confidence_score": 0.85,
+        "secondary_categories": ["categoria_secundaria"],
+        "model_used": "hugging_face_medical_classifier",
+        "reasoning": "Explicación del modelo",
+        "recommendations": ["recomendacion1", "recomendacion2"]
+      },
+      "classification_ready": true,
+      "process_completed": true
     }
-  agent: data_structurer
+  agent: json_data_structurer
   context:
-    - initial_interview_task
-    - preliminary_analysis_task
-
-medical_classification_task:
-  description: >
-    Clasificar los datos estructurados de anamnesis en una de las 8 categorías médicas:
-    - neurological: Problemas neurológicos (cefaleas, migrañas, epilepsia, etc.)
-    - cardiovascular: Problemas cardíacos y vasculares
-    - respiratory: Problemas respiratorios
-    - gastrointestinal: Problemas digestivos
-    - musculoskeletal: Problemas músculo-esqueléticos  
-    - dermatological: Problemas de piel
-    - psychiatric: Problemas de salud mental
-    - other: Otros casos no clasificables
-    
-    Proporcionar:
-    - Categoría principal con nivel de confianza
-    - Categorías secundarias si aplican
-    - Indicadores clave que llevaron a la clasificación
-    - Recomendaciones específicas
-    - Nivel de urgencia (low/medium/high/critical)
-  expected_output: >
-    Clasificación en formato JSON:
-    {
-      "primary_category": "categoria_principal",
-      "confidence_score": 0.85,
-      "secondary_categories": ["categoria_secundaria"],
-      "key_indicators": ["indicador1", "indicador2"],
-      "recommendations": [
-        "recomendacion1",
-        "recomendacion2"
-      ],
-      "urgency_level": "low|medium|high|critical",
-      "reasoning": "Explicación detallada del razonamiento diagnóstico",
-      "model_version": "medical_classifier_v1.0",
-      "classification_timestamp": "ISO timestamp"
-    }
-  agent: medical_classifier
-  context:
-    - initial_interview_task
-    - preliminary_analysis_task  
-    - data_structuring_task
+    - conversational_interview_task
+    - specific_questions_analysis_task
