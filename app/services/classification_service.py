@@ -403,38 +403,38 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
     def _generate_recommendations(self, category: str, confidence: float) -> List[str]:
         """Generar recomendaciones basadas en la categoría"""
         base_recommendations = [
-            "Consulta médica para evaluación completa",
-            "Seguimiento según evolución de síntomas"
+            "Medical consultation for complete evaluation",
+            "Follow-up according to symptom evolution"
         ]
         
         category_recommendations = {
             "neurological": [
-                "Considera evaluación neurológica especializada",
-                "Documenta frecuencia y duración de síntomas"
+                "Consider specialized neurological evaluation",
+                "Document symptom frequency and duration"
             ],
             "cardiovascular": [
-                "Monitoreo de signos vitales recomendado",
-                "Considera evaluación cardiológica"
+                "Vital sign monitoring is recommended",
+                "Consider cardiology evaluation"
             ],
             "respiratory": [
-                "Evaluación de función pulmonar",
-                "Monitoreo de saturación de oxígeno"
+                "Pulmonary function evaluation",
+                "Oxygen saturation monitoring"
             ],
             "gastrointestinal": [
-                "Evaluación gastroenterológica",
-                "Considerar estudios de imagen si es necesario"
+                "Gastroenterology evaluation",
+                "Consider imaging studies if necessary"
             ],
             "musculoskeletal": [
-                "Evaluación ortopédica o reumatológica",
-                "Considerar estudios de imagen"
+                "Orthopedic or rheumatology evaluation",
+                "Consider imaging studies"
             ],
             "dermatological": [
-                "Evaluación dermatológica especializada",
-                "Documentar cambios en lesiones cutáneas"
+                "Specialized dermatology evaluation",
+                "Document changes in skin lesions"
             ],
             "psychiatric": [
-                "Evaluación psiquiátrica o psicológica",
-                "Considera apoyo en salud mental"
+                "Psychiatric or psychological evaluation",
+                "Consider mental health support"
             ]
         }
         
@@ -444,7 +444,7 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
         
         # Agregar recomendación basada en confianza
         if confidence < 0.6:
-            recommendations.append("Clasificación con baja confianza - revisar con especialista")
+            recommendations.append("Low-confidence classification - review with a specialist")
         
         return recommendations
     
@@ -504,7 +504,7 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
             symptom_words = [word for word in words if len(word) > 4 and word.isalpha()][:3]
             indicators = [word.title() for word in symptom_words]
         
-        return indicators if indicators else ["Síntomas generales identificados"]
+        return indicators if indicators else ["General symptoms identified"]
     
     def _classify_by_keywords(self, text: str) -> str:
         """Clasificación básica por palabras clave como fallback"""
@@ -555,13 +555,13 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
             "primary_category": primary_category,
             "confidence_score": confidence,
             "secondary_categories": [],
-            "key_indicators": ["Análisis automático por palabras clave"],
+            "key_indicators": ["Automatic keyword-based analysis"],
             "recommendations": [
-                "Consulta médica para evaluación completa",
-                "Seguimiento según evolución de síntomas"
+                "Medical consultation for complete evaluation",
+                "Follow-up according to symptom evolution"
             ],
             "urgency_level": "medium",
-            "reasoning": f"Clasificación automática basada en análisis de contenido. Respuesta original: {raw_response[:100]}...",
+            "reasoning": f"Automatic classification based on content analysis. Original response: {raw_response[:100]}...",
             "model_name": self.model_name,
             "model_version": self.version,
             "classification_timestamp": datetime.now().isoformat(),
@@ -574,13 +574,13 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
             "primary_category": "other",
             "confidence_score": 0.0,
             "secondary_categories": [],
-            "key_indicators": ["Error en clasificación"],
+            "key_indicators": ["Classification error"],
             "recommendations": [
-                "Revisar datos de entrada",
-                "Consulta médica recomendada"
+                "Review input data",
+                "Medical consultation recommended"
             ],
             "urgency_level": "medium",
-            "reasoning": f"Error en clasificación: {error_msg}",
+            "reasoning": f"Classification error: {error_msg}",
             "model_name": self.model_name,
             "model_version": self.version,
             "classification_timestamp": datetime.now().isoformat(),
@@ -590,16 +590,16 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
     
     def get_model_info(self) -> Dict[str, Any]:
         """Información del modelo de clasificación"""
-        hf_status = "disponible" if HF_AVAILABLE and self.classifier is not None else "no disponible"
+        hf_status = "available" if HF_AVAILABLE and self.classifier is not None else "not available"
         current_model = self.medical_model_name if self.use_medical_bert else self.zero_shot_model
         
         return {
             "name": self.model_name,
             "version": self.version,
             "categories": self.categories,
-            "description": "Modelo de clasificación médica usando Zero-Shot Classification con modelos especializados",
-            "input_format": "Datos estructurados de anamnesis en JSON",
-            "output_format": "Clasificación con categoría, confianza real y recomendaciones",
+            "description": "Medical classification model using Zero-Shot Classification with specialized models",
+            "input_format": "Structured anamnesis data in JSON",
+            "output_format": "Classification with category, real confidence, and recommendations",
             "huggingface_status": hf_status,
             "current_model": current_model,
             "use_medical_bert": self.use_medical_bert,

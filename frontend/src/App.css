@@ -1,152 +1,207 @@
+/* ===================================
+   DESIGN SYSTEM - MEDICAL DASHBOARD
+   =================================== */
+
+:root {
+  --bg-primary: #0b1326;
+  --bg-surface: #171f33;
+  --bg-surface-low: #131b2e;
+  --bg-surface-variant: #2d3449;
+  --color-primary: #c3c0ff;
+  --color-primary-container: #4f46e5;
+  --color-secondary: #b9c8de;
+  --color-tertiary: #4edea3;
+  --text-primary: #dae2fd;
+  --text-secondary: #c7c4d8;
+  --outline: #918fa1;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ===================================
+   APP LAYOUT
+   =================================== */
+
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-family);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
 }
 
-/* Header de navegación */
+/* ===================================
+   HEADER
+   =================================== */
+
 .app-header {
-  background: linear-gradient(135deg, #343a40 0%, #495057 100%);
-  color: white;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--bg-surface-variant);
+  padding: 0;
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.app-nav {
+.header-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 30px;
-  max-width: 1200px;
+  padding: 16px 32px;
+  max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
 }
 
-.nav-brand h1 {
-  margin: 0;
-  font-size: 1.5rem;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo-text {
+  font-size: 24px;
   font-weight: 700;
+  color: var(--color-primary);
+  margin: 0;
+  letter-spacing: -0.5px;
 }
 
-.nav-brand span {
-  font-size: 0.8rem;
-  opacity: 0.8;
-  margin-left: 10px;
+.logo-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
-.nav-steps {
-  display: flex;
-  gap: 30px;
-  flex: 1;
-  justify-content: center;
-}
-
-.nav-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 20px;
-  transition: all 0.3s ease;
-  opacity: 0.6;
-}
-
-.nav-step.active {
-  background: rgba(79, 172, 254, 0.2);
-  opacity: 1;
-  transform: scale(1.05);
-}
-
-.nav-step.completed {
-  opacity: 1;
-  color: #28a745;
-}
-
-.nav-step.pending {
-  opacity: 0.5;
-}
-
-.step-number {
-  background: rgba(255, 255, 255, 0.2);
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.nav-step.active .step-number {
-  background: #4facfe;
-  color: white;
-}
-
-.nav-step.completed .step-number {
-  background: #28a745;
-  color: white;
-}
-
-.step-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.nav-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.btn-restart {
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+.btn-reset-header {
+  background: var(--color-primary-container);
   border: none;
   color: white;
   padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
-  text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.btn-restart:hover {
-  background: linear-gradient(135deg, #218838 0%, #1e9f8a 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+.btn-reset-header:hover {
+  background: #5d55f5;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
 }
 
-.btn-restart:active {
+.btn-reset-header:active {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
 }
 
-/* Contenido principal */
+/* ===================================
+   MAIN CONTENT
+   =================================== */
+
 .app-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 140px); /* Ajustar según header (80px) y footer (60px) */
-  max-height: calc(100vh - 140px);
   overflow: hidden;
+  min-height: 0;
+  position: relative;
 }
 
-/* Error banner */
-.error-banner {
-  background: #f8d7da;
-  border: 1px solid #f5c6cb;
-  color: #721c24;
-  padding: 12px 20px;
+/* ===================================
+   ERROR NOTIFICATION
+   =================================== */
+
+.error-notification {
+  background: rgba(220, 53, 69, 0.1);
+  border-left: 3px solid #dc3545;
+  color: #ff6b6b;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 20px;
-  border-radius: 6px;
+  margin: 0;
+  font-size: 13px;
+  border-radius: 0;
+}
+
+.error-close {
+  background: none;
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 0 4px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.error-close:hover {
+  opacity: 0.8;
+}
+
+/* ===================================
+   FOOTER
+   =================================== */
+
+.app-footer {
+  background: var(--bg-surface);
+  border-top: 1px solid var(--bg-surface-variant);
+  padding: 12px 32px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.footer-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ===================================
+   RESPONSIVE
+   =================================== */
+
+@media (max-width: 768px) {
+  .header-container {
+    padding: 12px 16px;
+  }
+
+  .logo-text {
+    font-size: 20px;
+  }
+
+  .btn-reset-header {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  .app-footer {
+    padding: 12px 16px;
+    font-size: 11px;
+  }
 }
 
 .error-banner button {

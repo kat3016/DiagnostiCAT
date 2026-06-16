@@ -89,11 +89,11 @@ class LLMService:
                         }
                     else:
                         error_text = await response.text()
-                        raise Exception(f"Error del modelo LLM: {response.status} - {error_text}")
+                        raise Exception(f"LLM model error: {response.status} - {error_text}")
         
         except asyncio.TimeoutError:
             return {
-                "response": "Lo siento, el modelo está tardando mucho en responder. Por favor, intente de nuevo.",
+                "response": "Sorry, the model is taking too long to respond. Please try again.",
                 "model": self.model_name,
                 "tokens_used": 0,
                 "success": False,
@@ -147,34 +147,34 @@ class LLMService:
         
         # Respuestas de fallback basadas en palabras clave
         if "dolor de cabeza" in user_lower or "cefalea" in user_lower:
-            if "clasificación" in system_prompt.lower():
-                return '''{"predicted_condition": "Cefalea tensional", "confidence": 0.75, "category": "neurological", "severity": "MEDIO", "recommendations": ["Descanso", "Hidratación", "Analgésicos de venta libre"], "reasoning": "Síntomas compatibles con cefalea tensional común"}'''
+            if "classification" in system_prompt.lower() or "clasificación" in system_prompt.lower():
+                return '''{"predicted_condition": "Tension headache", "confidence": 0.75, "category": "neurological", "severity": "MEDIUM", "recommendations": ["Rest", "Hydration", "Over-the-counter pain relievers"], "reasoning": "Symptoms compatible with a common tension headache"}'''
             else:
-                return "Entiendo que tiene dolor de cabeza. Esto puede deberse a varias causas como tensión, deshidratación o estrés. ¿Puede describirme más detalles sobre el dolor? ¿Dónde lo siente exactamente y cuándo comenzó?"
+                return "I understand you have a headache. This can have several causes, such as tension, dehydration, or stress. Can you describe more details about the pain? Where exactly do you feel it, and when did it start?"
         
         elif "fiebre" in user_lower or "temperatura" in user_lower:
-            if "clasificación" in system_prompt.lower():
-                return '''{"predicted_condition": "Síndrome febril", "confidence": 0.70, "category": "infectious", "severity": "MEDIO", "recommendations": ["Monitoreo de temperatura", "Hidratación", "Reposo"], "reasoning": "Presencia de fiebre sugiere posible proceso infeccioso"}'''
+            if "classification" in system_prompt.lower() or "clasificación" in system_prompt.lower():
+                return '''{"predicted_condition": "Fever syndrome", "confidence": 0.70, "category": "infectious", "severity": "MEDIUM", "recommendations": ["Temperature monitoring", "Hydration", "Rest"], "reasoning": "Presence of fever suggests a possible infectious process"}'''
             else:
-                return "La fiebre puede indicar una infección u otro proceso inflamatorio. ¿Cuál es su temperatura actual? ¿Tiene otros síntomas acompañantes como dolor de garganta, tos o malestar general?"
+                return "Fever can indicate an infection or another inflammatory process. What is your current temperature? Do you have accompanying symptoms such as sore throat, cough, or general malaise?"
         
         elif "tos" in user_lower:
-            if "clasificación" in system_prompt.lower():
-                return '''{"predicted_condition": "Síndrome respiratorio", "confidence": 0.65, "category": "respiratory", "severity": "BAJO", "recommendations": ["Hidratación", "Reposo", "Evitar irritantes"], "reasoning": "Síntomas respiratorios que requieren evaluación"}'''
+            if "classification" in system_prompt.lower() or "clasificación" in system_prompt.lower():
+                return '''{"predicted_condition": "Respiratory syndrome", "confidence": 0.65, "category": "respiratory", "severity": "LOW", "recommendations": ["Hydration", "Rest", "Avoid irritants"], "reasoning": "Respiratory symptoms requiring evaluation"}'''
             else:
-                return "La tos puede tener varias causas. ¿Es una tos seca o con flemas? ¿Cuánto tiempo lleva con este síntoma? ¿Tiene fiebre u otros síntomas respiratorios?"
+                return "Cough can have several causes. Is it a dry cough or does it produce phlegm? How long have you had this symptom? Do you have fever or other respiratory symptoms?"
         
         elif "dolor" in user_lower:
-            if "clasificación" in system_prompt.lower():
-                return '''{"predicted_condition": "Síndrome doloroso", "confidence": 0.60, "category": "general", "severity": "MEDIO", "recommendations": ["Evaluación médica", "Analgésicos según indicación"], "reasoning": "Síntomas dolorosos que requieren evaluación específica"}'''
+            if "classification" in system_prompt.lower() or "clasificación" in system_prompt.lower():
+                return '''{"predicted_condition": "Pain syndrome", "confidence": 0.60, "category": "general", "severity": "MEDIUM", "recommendations": ["Medical evaluation", "Pain relievers as directed"], "reasoning": "Pain symptoms requiring specific evaluation"}'''
             else:
-                return "Entiendo que presenta dolor. ¿Puede ubicar exactamente dónde siente el dolor? ¿Cómo describiría la intensidad del 1 al 10? ¿Cuándo comenzó?"
+                return "I understand that you are experiencing pain. Can you locate exactly where you feel the pain? How would you describe the intensity from 1 to 10? When did it start?"
         
         else:
-            if "clasificación" in system_prompt.lower():
-                return '''{"predicted_condition": "Consulta general", "confidence": 0.50, "category": "general", "severity": "BAJO", "recommendations": ["Evaluación médica completa"], "reasoning": "Síntomas requieren evaluación médica profesional"}'''
+            if "classification" in system_prompt.lower() or "clasificación" in system_prompt.lower():
+                return '''{"predicted_condition": "General consultation", "confidence": 0.50, "category": "general", "severity": "LOW", "recommendations": ["Complete medical evaluation"], "reasoning": "Symptoms require professional medical evaluation"}'''
             else:
-                return "Entiendo su consulta. Para poder ayudarle mejor, ¿podría describirme con más detalle los síntomas que está experimentando? ¿Cuándo comenzaron y cómo se sienten?"
+                return "I understand your concern. To help you better, could you describe in more detail the symptoms you are experiencing? When did they start and how do they feel?"
 
 
 # Instancia global del servicio

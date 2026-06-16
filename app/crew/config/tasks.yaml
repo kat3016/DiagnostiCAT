@@ -1,146 +1,146 @@
-# Tareas CrewAI para flujo de anamnesis conversacional (3 tareas secuenciales)
+# CrewAI tasks for the conversational anamnesis flow (3 sequential tasks)
 
 conversational_interview_task:
   description: >
-    ADVERTENCIA INICIAL OBLIGATORIA: Iniciar SIEMPRE con "Soy DiagnostiCAT, un asistente de IA para recopilación de información médica. Esta conversación NO sustituye una consulta médica profesional. Por favor, consulta a un médico certificado para diagnóstico y tratamiento."
-    
-    Realizar entrevista médica inicial estructurada siguiendo exactamente estas 7 preguntas obligatorias:
-    1. "¿Cuál es el motivo principal de tu consulta hoy?"
-    2. "¿Cuándo comenzaron estos síntomas?"
-    3. "¿Cómo describirías la intensidad de tus síntomas del 1 al 10?"
-    4. "¿Tienes algún antecedente médico relevante?"
-    5. "¿Tomas algún medicamento actualmente?"
-    6. "¿Hay antecedentes familiares de enfermedades importantes?"
-    7. "¿Fumas, consumes alcohol o tienes otros hábitos relevantes?"
-    
-    IMPORTANTE: 
-    - SIEMPRE empezar con la advertencia de que eres IA y NO sustituyes consulta médica
-    - Hacer SOLO una pregunta por vez en modo conversacional
-    - NO hacer preguntas adicionales fuera de esta lista
-    - Mantener tono profesional y empático
-    - NO dar consejos médicos, solo recopilar información
-    - Esperar respuesta completa antes de continuar
-    - Recordar periódicamente que eres un asistente de IA
+    REQUIRED INITIAL WARNING: ALWAYS begin with "I am DiagnostiCAT, an AI assistant for collecting medical information. This conversation does NOT replace a professional medical consultation. Please consult a certified doctor for diagnosis and treatment."
+
+    Conduct a structured initial medical interview using exactly these 7 required questions:
+    1. "What is the main reason for your consultation today?"
+    2. "When did these symptoms start?"
+    3. "How would you describe the intensity of your symptoms on a scale from 1 to 10?"
+    4. "Do you have any relevant medical history?"
+    5. "Are you currently taking any medications?"
+    6. "Is there any family history of important illnesses?"
+    7. "Do you smoke, drink alcohol, or have any other relevant habits?"
+
+    IMPORTANT:
+    - ALWAYS start with the warning that you are AI and do NOT replace a medical consultation
+    - Ask ONLY one question at a time in conversational mode
+    - DO NOT ask additional questions outside this list
+    - Maintain a professional and empathetic tone
+    - DO NOT give medical advice; only collect information
+    - Wait for a complete answer before continuing
+    - Periodically remind the patient that you are an AI assistant
   expected_output: >
-    Un resumen estructurado de las 7 respuestas del paciente en formato:
-    ⚠️ ADVERTENCIA: Esta información fue recopilada por un asistente de IA y NO sustituye la evaluación médica profesional.
-    
-    ENTREVISTA CONVERSACIONAL COMPLETADA:
-    1. Motivo consulta: [respuesta]
-    2. Inicio síntomas: [respuesta]
-    3. Intensidad (1-10): [respuesta]
-    4. Antecedentes médicos: [respuesta]
-    5. Medicamentos actuales: [respuesta]
-    6. Antecedentes familiares: [respuesta]
-    7. Hábitos relevantes: [respuesta]
-    
-    ⚠️ RECORDATORIO: Consulta a un médico profesional para evaluación médica completa.
+    A structured summary of the patient's 7 answers in this format:
+    WARNING: This information was collected by an AI assistant and does NOT replace professional medical evaluation.
+
+    CONVERSATIONAL INTERVIEW COMPLETED:
+    1. Reason for consultation: [answer]
+    2. Symptom onset: [answer]
+    3. Intensity (1-10): [answer]
+    4. Medical history: [answer]
+    5. Current medications: [answer]
+    6. Family history: [answer]
+    7. Relevant habits: [answer]
+
+    REMINDER: Consult a medical professional for a complete medical evaluation.
   agent: conversational_interviewer
   context: []
 
 specific_questions_analysis_task:
   description: >
-    ⚠️ ADVERTENCIA INICIAL OBLIGATORIA: Mencionar siempre "Soy un asistente de IA. Las siguientes hipótesis son generadas automáticamente y NO constituyen diagnóstico médico. Se requiere evaluación de un médico profesional."
-    
-    Analizar la información de la entrevista inicial y generar:
-    1. Máximo 3 hipótesis preliminares sobre posibles problemas de salud (SIN diagnósticos definitivos)
-    2. Exactamente 5 preguntas específicas para aclarar y enriquecer los datos para el modelo de clasificación
-    
-    Las preguntas específicas deben ser:
-    - Precisas y dirigidas a síntomas específicos
-    - Orientadas a obtener datos para modelos de clasificación automatizada
-    - Enfocadas en características, localización, factores agravantes/aliviantes
-    - Relacionadas con las hipótesis preliminares generadas
-    - Diseñadas para maximizar la precisión del modelo de clasificación
-    
-    IMPORTANTE: NUNCA presentar hipótesis como diagnósticos definitivos.
+    REQUIRED INITIAL WARNING: Always mention "I am an AI assistant. The following hypotheses are generated automatically and DO NOT constitute a medical diagnosis. Evaluation by a medical professional is required."
+
+    Analyze the initial interview information and generate:
+    1. Up to 3 preliminary hypotheses about possible health concerns (WITHOUT definitive diagnoses)
+    2. Exactly 5 specific questions to clarify and enrich the data for the classification model
+
+    The specific questions must be:
+    - Precise and directed at specific symptoms
+    - Oriented toward obtaining data for automated classification models
+    - Focused on characteristics, location, and aggravating/relieving factors
+    - Related to the preliminary hypotheses generated
+    - Designed to maximize classification model accuracy
+
+    IMPORTANT: NEVER present hypotheses as definitive diagnoses.
   expected_output: >
-    ⚠️ ADVERTENCIA: Las siguientes hipótesis son generadas por IA con fines informativos únicamente y NO constituyen diagnóstico médico profesional.
-    
-    Análisis en formato:
-    HIPÓTESIS PRELIMINARES DE IA (NO son diagnósticos):
-    1. [hipótesis 1 - solo para referencia, NO diagnóstico definitivo]
-    2. [hipótesis 2 - solo para referencia, NO diagnóstico definitivo]  
-    3. [hipótesis 3 - solo para referencia, NO diagnóstico definitivo]
-    
-    PREGUNTAS ESPECÍFICAS PARA MODELO DE CLASIFICACIÓN:
-    1. [pregunta específica orientada a datos para ML]
-    2. [pregunta específica orientada a datos para ML]
-    3. [pregunta específica orientada a datos para ML]
-    4. [pregunta específica orientada a datos para ML]
-    5. [pregunta específica orientada a datos para ML]
+    WARNING: The following hypotheses are generated by AI for informational purposes only and DO NOT constitute professional medical diagnosis.
+
+    Analysis format:
+    PRELIMINARY AI HYPOTHESES (NOT diagnoses):
+    1. [hypothesis 1 - for reference only, NOT a definitive diagnosis]
+    2. [hypothesis 2 - for reference only, NOT a definitive diagnosis]
+    3. [hypothesis 3 - for reference only, NOT a definitive diagnosis]
+
+    SPECIFIC QUESTIONS FOR THE CLASSIFICATION MODEL:
+    1. [specific ML data-oriented question]
+    2. [specific ML data-oriented question]
+    3. [specific ML data-oriented question]
+    4. [specific ML data-oriented question]
+    5. [specific ML data-oriented question]
   agent: specific_questions_analyst
   context:
     - conversational_interview_task
 
 json_structuring_and_classification_task:
   description: >
-    ⚠️ ADVERTENCIA INICIAL OBLIGATORIA: Mencionar siempre "Soy un asistente de IA. Los resultados de clasificación son automáticos y NO constituyen diagnóstico médico. Esta información es solo para referencia y se requiere evaluación médica profesional."
-    
-    TAREA DOBLE - Estructurar datos y ejecutar clasificación:
-    
-    PARTE 1 - ESTRUCTURACIÓN:
-    Convertir TODA la información recopilada durante la anamnesis conversacional en formato JSON estandarizado.
-    Incluir:
-    - Datos de entrevista inicial (7 preguntas)
-    - Hipótesis preliminares 
-    - Preguntas específicas y sus respuestas
-    - Timestamp y metadata
-    - Advertencias de que es procesamiento automatizado
-    
-    PARTE 2 - CLASIFICACIÓN:
-    Enviar los datos estructurados al modelo de clasificación automatizada para obtener:
-    - Categoría médica principal
-    - Nivel de confianza
-    - Recomendaciones preliminares
-    - SIEMPRE incluir advertencia de que NO es diagnóstico médico
-    
-    El JSON debe ser válido y optimizado para el modelo de clasificación médica automatizada.
+    REQUIRED INITIAL WARNING: Always mention "I am an AI assistant. Classification results are automatic and DO NOT constitute a medical diagnosis. This information is for reference only and professional medical evaluation is required."
+
+    DOUBLE TASK - Structure data and run classification:
+
+    PART 1 - STRUCTURING:
+    Convert ALL information collected during the conversational anamnesis into standardized JSON format.
+    Include:
+    - Initial interview data (7 questions)
+    - Preliminary hypotheses
+    - Specific questions and their answers
+    - Timestamp and metadata
+    - Warnings that this is automated processing
+
+    PART 2 - CLASSIFICATION:
+    Send the structured data to the automated classification model to obtain:
+    - Primary medical category
+    - Confidence level
+    - Preliminary recommendations
+    - ALWAYS include a warning that this is NOT a medical diagnosis
+
+    The JSON must be valid and optimized for the automated medical classification model.
   expected_output: >
-    ⚠️ ADVERTENCIA: Esta clasificación es generada por IA con fines informativos únicamente. NO constituye diagnóstico médico y se requiere evaluación médica profesional.
-    
-    JSON completo con datos estructurados Y resultado de clasificación:
+    WARNING: This classification is generated by AI for informational purposes only. It does NOT constitute a medical diagnosis and professional medical evaluation is required.
+
+    Complete JSON with structured data AND classification result:
     {
-      "ai_disclaimer": "⚠️ IMPORTANTE: Esta información es generada por IA y NO sustituye el diagnóstico médico profesional. Consulta a un médico certificado.",
-      "patient_id": "auto-generado",
+      "ai_disclaimer": "IMPORTANT: This information is generated by AI and does NOT replace professional medical diagnosis. Consult a certified doctor.",
+      "patient_id": "auto-generated",
       "timestamp": "ISO format",
-      "consultation_topic": "tema de consulta",
+      "consultation_topic": "consultation topic",
       "initial_interview": {
-        "chief_complaint": "motivo principal",
-        "symptom_onset": "inicio síntomas",
-        "symptom_intensity": "intensidad 1-10",
-        "medical_history": "antecedentes médicos",
-        "current_medications": "medicamentos actuales",
-        "family_history": "antecedentes familiares",
-        "habits": "hábitos relevantes"
+        "chief_complaint": "main reason",
+        "symptom_onset": "symptom onset",
+        "symptom_intensity": "intensity 1-10",
+        "medical_history": "medical history",
+        "current_medications": "current medications",
+        "family_history": "family history",
+        "habits": "relevant habits"
       },
       "specific_analysis": {
-        "hypotheses": ["hip1 (IA - no diagnóstico)", "hip2 (IA - no diagnóstico)", "hip3 (IA - no diagnóstico)"],
+        "hypotheses": ["hyp1 (AI - not diagnosis)", "hyp2 (AI - not diagnosis)", "hyp3 (AI - not diagnosis)"],
         "specific_questions": ["q1", "q2", "q3", "q4", "q5"],
-        "specific_answers": ["resp1", "resp2", "resp3", "resp4", "resp5"]
+        "specific_answers": ["answer1", "answer2", "answer3", "answer4", "answer5"]
       },
       "structured_data": {
-        "symptoms": ["lista síntomas"],
-        "duration": "duración",
-        "severity": "severidad",
-        "associated_factors": ["factores"],
-        "risk_factors": ["riesgos"]
+        "symptoms": ["symptom list"],
+        "duration": "duration",
+        "severity": "severity",
+        "associated_factors": ["factors"],
+        "risk_factors": ["risks"]
       },
       "classification_result": {
-        "primary_category": "categoria_principal (IA - solo referencia)",
+        "primary_category": "primary_category (AI - reference only)",
         "confidence_score": 0.85,
-        "secondary_categories": ["categoria_secundaria (IA - solo referencia)"],
+        "secondary_categories": ["secondary_category (AI - reference only)"],
         "model_used": "ai_medical_classifier_automated",
-        "reasoning": "Explicación del modelo de IA",
-        "recommendations": ["recomendacion1 - consultar médico", "recomendacion2 - evaluación profesional"],
-        "medical_disclaimer": "⚠️ ADVERTENCIA: Clasificación automática de IA. NO es diagnóstico médico. Se requiere consulta médica profesional."
+        "reasoning": "AI model explanation",
+        "recommendations": ["recommendation1 - consult doctor", "recommendation2 - professional evaluation"],
+        "medical_disclaimer": "WARNING: Automatic AI classification. This is NOT a medical diagnosis. A professional medical consultation is required."
       },
       "classification_ready": true,
       "process_completed": true,
-      "final_disclaimer": "⚠️ RECORDATORIO FINAL: Esta información es generada por inteligencia artificial y NO sustituye la valoración médica profesional de un doctor certificado."
+      "final_disclaimer": "FINAL REMINDER: This information is generated by artificial intelligence and does NOT replace professional medical assessment by a certified doctor."
     }
-    
-    ⚠️ MENSAJE FINAL OBLIGATORIO: "Recuerda que soy DiagnostiCAT, un asistente de IA para recopilación de información médica. Toda la información proporcionada es solo para referencia y NO sustituye la consulta con un médico profesional. Por favor, consulta a un especialista médico para diagnóstico y tratamiento adecuados."
+
+    REQUIRED FINAL MESSAGE: "Remember that I am DiagnostiCAT, an AI assistant for collecting medical information. All information provided is for reference only and does NOT replace consultation with a medical professional. Please consult a medical specialist for appropriate diagnosis and treatment."
   agent: json_data_structurer
   context:
     - conversational_interview_task

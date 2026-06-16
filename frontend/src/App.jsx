@@ -5,36 +5,37 @@ import './App.css';
 function App() {
   const [conversationId, setConversationId] = useState(null);
   const [error, setError] = useState(null);
-  const [chatKey, setChatKey] = useState(0); // Key para forzar re-render del chat
+  const [chatKey, setChatKey] = useState(0);
 
   const handleRestart = () => {
-    console.log('Reiniciando desde el header...');
     setConversationId(null);
     setError(null);
-    setChatKey(prev => prev + 1); // Forzar re-render completo del chat
+    setChatKey(prev => prev + 1);
   };
 
   return (
-    <div className="app">
-      {/* Header simple */}
-      <div className="app-header">
-        <div className="app-nav">
-          <div className="nav-brand">
-            <h1>🏥 DiagnostiCAT</h1>
-            <span>Asistencia Médica IA</span>
+    <div className="app" style={{ background: '#0b1326' }}>
+      {/* Modern Header */}
+      <header className="app-header">
+        <div className="header-container">
+          <div className="header-left">
+            <div className="logo-area">
+              <h1 className="logo-text">DiagnostiCAT</h1>
+              <p className="logo-subtitle">AI Medical Assistant</p>
+            </div>
           </div>
-          <button onClick={handleRestart} className="btn-restart">
-            Reiniciar Conversación
+          <button onClick={handleRestart} className="btn-reset-header">
+            Reset Chat
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Contenido principal */}
+      {/* Main Content */}
       <div className="app-content">
         {error && (
-          <div className="error-banner">
-            <span>❌ {error}</span>
-            <button onClick={() => setError(null)}>✕</button>
+          <div className="error-notification">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="error-close">×</button>
           </div>
         )}
 
@@ -46,15 +47,12 @@ function App() {
         />
       </div>
 
-      {/* Footer simple */}
-      <div className="app-footer">
+      {/* Footer */}
+      <footer className="app-footer">
         <div className="footer-content">
-          <div className="footer-info">
-            <p>🔒 Información confidencial | 📞 Emergencias: 123 | ⚠️ No reemplaza consulta médica</p>
-            <p>🤖 Asistente médico basado en Inteligencia Artificial</p>
-          </div>
+          <p>Confidential Information | Emergencies: 911 | Not a substitute for medical consultation</p>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

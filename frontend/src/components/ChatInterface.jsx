@@ -2,17 +2,47 @@ import React, { useState, useRef, useEffect } from 'react';
 import './ChatInterface.css';
 
 const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
+  const welcomeMessage = `Hello, Welcome to DiagnostiCAT
+
+I'm a conversational agent designed to conduct basic medical history (anamnesis) and estimate the probability of certain health conditions based on your responses.
+
+What can I do for you?
+- Collect information about your symptoms
+- Ask structured medical questions
+- Provide probabilistic estimations
+
+Estimated Duration: 5-10 minutes
+
+INFORMED CONSENT
+
+Before continuing, it's important that you understand:
+
+This agent is for informational and educational purposes only
+It does NOT replace professional medical care
+Results are estimates subject to error
+Your information is used only during this session
+It is not permanently stored or shared
+
+In case of emergency symptoms, seek immediate medical attention
+
+Do you agree to continue under these conditions?
+
+- Type "I agree" to begin the consultation
+- Type "I do not agree" to decline
+
+I'm here to help you.`;
+
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '👋 **¡Hola! Bienvenido/a a DiagnostiCAT** 🏥\n\nSoy un **agente conversacional** diseñado para realizar una **anamnesis básica** y estimar la probabilidad de ciertas condiciones de salud a partir de sus respuestas.\n\n� **¿Qué puedo hacer por usted?**\n• Recopilar información sobre sus síntomas\n• Realizar preguntas médicas estructuradas\n• Proporcionar estimaciones probabilísticas\n\n⏱️ **Duración estimada:** 5-10 minutos\n\n📋 **CONSENTIMIENTO INFORMADO**\n\nAntes de continuar, es importante que comprenda:\n\n✅ **Este agente tiene fines informativos y educativos**\n✅ **NO sustituye la atención médica profesional**\n✅ **Los resultados son estimaciones sujetas a error**\n✅ **Su información se usa solo durante esta sesión**\n✅ **No se almacena permanentemente ni se comparte**\n\n🚨 **En caso de síntomas de urgencia, busque atención inmediata**\n\n**¿Está de acuerdo en continuar bajo estas condiciones?**\n\n• Escriba **"Acepto"** para comenzar la consulta\n• Escriba **"No acepto"** para finalizar\n\n¡Estoy aquí para ayudarle! 😊',
+      content: welcomeMessage,
       timestamp: new Date(),
       isWelcome: true
     }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isConsentDenied, setIsConsentDenied] = useState(false); // Nuevo estado para controlar si se negó el consentimiento
+  const [isConsentDenied, setIsConsentDenied] = useState(false); // Tracks whether consent was denied
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -24,7 +54,7 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Mantener el foco en el input cuando se carga el componente
+  // Keep focus on the input when the component loads
   useEffect(() => {
     const focusInput = () => {
       if (inputRef.current && !isLoading) {
@@ -34,36 +64,34 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
     
     focusInput();
     
-    // También enfocar cuando termina de cargar
+    // Also focus when loading finishes
     if (!isLoading) {
       setTimeout(focusInput, 100);
     }
   }, [isLoading]);
 
-  // Foco inicial del componente
+  // Initial component focus
   useEffect(() => {
     setTimeout(() => {
       inputRef.current?.focus();
     }, 500);
   }, []);
 
-  // Reiniciar el chat cuando conversationId cambia a null
+  // Restart the chat when conversationId changes to null
   useEffect(() => {
     if (conversationId === null) {
-      console.log('Reiniciando mensajes del chat...');
       setMessages([
         {
           role: 'assistant',
-          content: '👋 **¡Hola! Bienvenido/a a DiagnostiCAT** 🏥\n\nSoy un **agente conversacional** diseñado para realizar una **anamnesis básica** y estimar la probabilidad de ciertas condiciones de salud a partir de sus respuestas.\n\n� **¿Qué puedo hacer por usted?**\n• Recopilar información sobre sus síntomas\n• Realizar preguntas médicas estructuradas\n• Proporcionar estimaciones probabilísticas\n\n⏱️ **Duración estimada:** 5-10 minutos\n\n📋 **CONSENTIMIENTO INFORMADO**\n\nAntes de continuar, es importante que comprenda:\n\n✅ **Este agente tiene fines informativos y educativos**\n✅ **NO sustituye la atención médica profesional**\n✅ **Los resultados son estimaciones sujetas a error**\n✅ **Su información se usa solo durante esta sesión**\n✅ **No se almacena permanentemente ni se comparte**\n\n🚨 **En caso de síntomas de urgencia, busque atención inmediata**\n\n**¿Está de acuerdo en continuar bajo estas condiciones?**\n\n• Escriba **"Acepto"** para comenzar la consulta\n• Escriba **"No acepto"** para finalizar\n\n¡Estoy aquí para ayudarle! 😊',
+          content: welcomeMessage,
           timestamp: new Date(),
           isWelcome: true
         }
       ]);
-      setIsConsentDenied(false); // Resetear estado de consentimiento denegado
-      setInputMessage(''); // Limpiar también el input
-      setIsLoading(false); // Asegurar que no esté en estado de carga
+      setIsConsentDenied(false);
+      setInputMessage('');
+      setIsLoading(false);
       
-      // Enfocar el input después de reiniciar
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -81,18 +109,15 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
       timestamp: new Date()
     };
 
-    // Guardamos el mensaje antes de limpiar el input
     const messageToSend = inputMessage;
-    
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
 
-    // Detectar si el usuario está negando el consentimiento
     const userMessageLower = messageToSend.toLowerCase().trim();
     const negativePatterns = [
-      'no acepto', 'no', 'niego', 'rechazo', 'rechaza', 'no autorizo',
-      'no estoy de acuerdo', 'en desacuerdo'
+      'i do not agree', 'i disagree', 'no', 'reject', 'decline',
+      'don\'t agree', 'disagree'
     ];
 
     const isConsentNegative = negativePatterns.some(pattern => 
@@ -100,13 +125,22 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
     );
 
     if (isConsentNegative && !conversationId) {
-      // Usuario negó el consentimiento - bloquear el chat
       setIsConsentDenied(true);
       setIsLoading(false);
       
       const denialMessage = {
         role: 'assistant',
-        content: '❌ **Consentimiento Denegado**\n\n🚫 Entiendo que no desea otorgar el consentimiento para procesar información médica.\n\n🔒 **El chat ha sido bloqueado** según su decisión.\n\nSin su consentimiento, no puedo proceder con la recopilación de información médica.\n\n🔄 Si cambia de opinión, puede usar el botón "**Reiniciar Conversación**" que aparece abajo para comenzar de nuevo.\n\n¡Que tenga un buen día! 👋',
+        content: `Consent Denied
+
+I understand that you do not wish to provide consent for processing medical information.
+
+The chat has been blocked according to your decision.
+
+Without your consent, I cannot proceed with collecting medical information.
+
+If you change your mind, you can use the "Reset Chat" button to start over.
+
+Have a good day.`,
         timestamp: new Date(),
         isConsentDenied: true
       };
@@ -116,13 +150,12 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
     }
 
     try {
-      // Importar dinámicamente el servicio
       const { chatService } = await import('../services/apiService');
       
       const response = await chatService.sendMessage(
         messageToSend,
         conversationId,
-        null // No enviamos contexto de paciente por simplicidad
+        null
       );
 
       const assistantMessage = {
@@ -138,23 +171,21 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Si es una nueva conversación, actualizar el ID
       if (response.conversation_id && response.conversation_id !== conversationId) {
         onNewConversation(response.conversation_id);
       }
 
     } catch (error) {
-      console.error('Error enviando mensaje:', error);
+      console.error('Error sending message:', error);
       const errorMessage = {
         role: 'assistant',
-        content: `Error: ${error.message}. Por favor, verifique que el backend esté funcionando en http://localhost:8000`,
+        content: `Error: ${error.message}. Please verify that the backend is running at http://localhost:8000`,
         timestamp: new Date(),
         isError: true
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      // Mantener el foco en el input después de enviar el mensaje (solo si el chat no está bloqueado)
       if (!isConsentDenied) {
         setTimeout(() => {
           inputRef.current?.focus();
@@ -171,13 +202,9 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
   };
 
   const restartConversation = () => {
-    console.log('Reiniciando conversación desde chat bloqueado...');
-    
-    // Si tenemos una función de reinicio desde el padre, la usamos
     if (onRestart) {
       onRestart();
     } else {
-      // Fallback: usar el método anterior
       setIsConsentDenied(false);
       setInputMessage('');
       setIsLoading(false);
@@ -196,9 +223,10 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
   };
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('es-CO', {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -207,111 +235,27 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
       <div className="chat-messages">
         {messages.map((message, index) => (
           <div key={index} className={`message ${message.role} ${message.isError ? 'error' : ''} ${message.isWelcome ? 'welcome' : ''}`}>
-            <div className="message-content">
+            <div className="message-bubble">
               <div className="message-text">
                 {message.content.split('\n').map((line, i) => (
-                  <div key={i}>
-                    {line.includes('**') ? (
-                      <span dangerouslySetInnerHTML={{ 
-                        __html: line
-                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                          .replace(/• /g, '• ')
-                      }} />
-                    ) : (
-                      line
-                    )}
-                    {i < message.content.split('\n').length - 1 && <br />}
+                  <div key={i} className="text-line">
+                    {line || <br />}
                   </div>
                 ))}
               </div>
-              
-              {/* Solo mostrar meta información para diagnósticos finales */}
-              {message.is_diagnosis && (
-                <div className="diagnosis-card">
-                  <div className="diagnosis-header">
-                    <h3>🏥 Análisis Médico Preliminar</h3>
-                  </div>
-                  
-                  {message.predicted_condition && (
-                    <div className="predicted-condition">
-                      <strong>Condición Predicha:</strong> {message.predicted_condition}
-                    </div>
-                  )}
-                  
-                  {message.confidence_score && (
-                    <div className="confidence-score">
-                      <strong>Nivel de Confianza:</strong> {Math.round(message.confidence_score * 100)}%
-                      <div className="confidence-bar">
-                        <div 
-                          className="confidence-fill" 
-                          style={{ width: `${message.confidence_score * 100}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {message.severity_assessment && (
-                    <div className="severity-assessment">
-                      <span 
-                        className="severity-badge"
-                        style={{ backgroundColor: getSeverityColor(message.severity_assessment) }}
-                      >
-                        📊 Nivel de Urgencia: {message.severity_assessment}
-                      </span>
-                    </div>
-                  )}
-                  
-                  <div className="diagnosis-disclaimer">
-                    ⚠️ <em>Este análisis es preliminar y no reemplaza el diagnóstico médico profesional.</em>
-                  </div>
-                </div>
-              )}
-
-              {message.suggestions && message.suggestions.length > 0 && (
-                <div className="suggestions">
-                  <h4>💡 Sugerencias:</h4>
-                  <ul>
-                    {message.suggestions.map((suggestion, i) => (
-                      <li key={i}>{suggestion}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {message.follow_up_questions && message.follow_up_questions.length > 0 && (
-                <div className="follow-up">
-                  <h4>❓ Preguntas de seguimiento:</h4>
-                  <ul>
-                    {message.follow_up_questions.map((question, i) => (
-                      <li key={i}>
-                        <button 
-                          className="follow-up-btn"
-                          onClick={() => setInputMessage(question)}
-                        >
-                          {question}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            
-            <div className="message-time">
-              {formatTime(message.timestamp)}
+              <div className="message-time">{formatTime(message.timestamp)}</div>
             </div>
           </div>
         ))}
         
         {isLoading && (
           <div className="message assistant loading">
-            <div className="message-content">
+            <div className="message-bubble">
               <div className="typing-indicator">
                 <span></span>
                 <span></span>
                 <span></span>
               </div>
-              <div className="message-text">El asistente médico está escribiendo...</div>
             </div>
           </div>
         )}
@@ -319,54 +263,39 @@ const ChatInterface = ({ conversationId, onNewConversation, onRestart }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input-container">
+      <div className="chat-input-area">
         {isConsentDenied ? (
-          // Mostrar botón de reiniciar cuando el consentimiento está denegado
-          <div className="chat-blocked-state">
-            <div className="blocked-message">
-              🚫 **Chat Bloqueado**: Consentimiento denegado
-            </div>
-            <button 
-              onClick={restartConversation}
-              className="restart-button"
-            >
-              🔄 Reiniciar Conversación
+          <div className="blocked-state">
+            <div className="blocked-message">Chat blocked due to consent denial</div>
+            <button onClick={restartConversation} className="btn-restart-chat">
+              Reset Chat
             </button>
-            <div className="blocked-disclaimer">
-              Si cambia de opinión, puede reiniciar la conversación
-            </div>
           </div>
         ) : (
-          // Input normal cuando el chat no está bloqueado
           <>
-            <div className="chat-input">
+            <div className="input-wrapper">
               <textarea
                 ref={inputRef}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                onFocus={(e) => e.target.selectionStart = e.target.value.length} // Cursor al final cuando obtiene foco
-                placeholder="Describa sus síntomas o haga su consulta médica..."
+                placeholder="Describe your symptoms or ask a medical question..."
                 rows="3"
                 disabled={isLoading}
                 autoFocus={true}
-                style={{
-                  resize: 'none',
-                  outline: 'none'
-                }}
+                className="message-input"
               />
               <button 
                 onClick={sendMessage}
                 disabled={!inputMessage.trim() || isLoading}
-                className="send-button"
-                onMouseDown={(e) => e.preventDefault()} // Evita que el botón quite el foco del textarea
+                className="btn-send"
               >
-                {isLoading ? '...' : '→'}
+                {isLoading ? '...' : 'Send'}
               </button>
             </div>
             
-            <div className="chat-disclaimer">
-              ⚠️ Esta es una herramienta de orientación. En emergencias, llame al 123.
+            <div className="input-disclaimer">
+              This is a guidance tool. In emergencies, call 911.
             </div>
           </>
         )}

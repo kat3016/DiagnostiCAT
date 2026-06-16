@@ -33,7 +33,7 @@ async def request_consent(consent: ConsentRequest):
     
     if not consent.accepted:
         return ConsentResponse(
-            message="Consentimiento no otorgado. La aplicación termina inmediatamente según lo requerido.",
+            message="Consent not granted. The application ends immediately as required.",
             accepted=False
         )
     
@@ -50,7 +50,7 @@ async def request_consent(consent: ConsentRequest):
     }
     
     return ConsentResponse(
-        message=f"Consentimiento otorgado. Iniciando entrevista inicial. conversation_id={conversation_id}",
+        message=f"Consent granted. Starting initial interview. conversation_id={conversation_id}",
         accepted=True
     )
 
@@ -59,17 +59,17 @@ async def request_consent(consent: ConsentRequest):
 async def start_initial_interview(conversation_id: str):
     """Paso 2: Iniciar entrevista inicial con preguntas fijas usando CrewAI"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.CONVERSATIONAL_INTERVIEW:
-        raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
+        raise HTTPException(status_code=400, detail=f"Incorrect phase. Current: {state['phase']}")
     
     try:
         # Preparar inputs para CrewAI
         inputs = {
-            "consultation_topic": "consulta médica general",
-            "patient_message": "Iniciar entrevista médica con primera pregunta fija",
+            "consultation_topic": "general medical consultation",
+            "patient_message": "Start the medical interview with the first fixed question",
             "conversation_id": conversation_id,
             "current_question": 1
         }
@@ -96,18 +96,18 @@ async def start_initial_interview(conversation_id: str):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error iniciando entrevista: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error starting interview: {str(e)}")
 
 
 @router.post("/interview/answer")
 async def submit_interview_answer(conversation_id: str, answer: str):
     """Paso 2: Responder preguntas de la entrevista inicial usando CrewAI"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.CONVERSATIONAL_INTERVIEW:
-        raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
+        raise HTTPException(status_code=400, detail=f"Incorrect phase. Current: {state['phase']}")
     
     # Registrar respuesta del usuario
     user_message = MessageModel(
@@ -135,14 +135,14 @@ async def submit_interview_answer(conversation_id: str, answer: str):
             return {
                 "conversation_id": conversation_id,
                 "phase": state["phase"],
-                "message": "Entrevista inicial completada con 7 preguntas. Procediendo al análisis preliminar.",
+                "message": "Initial 7-question interview completed. Proceeding to preliminary analysis.",
                 "questions_completed": questions_completed,
                 "interview_data": state["interview_data"]
             }
         
         # Preparar inputs para siguiente pregunta
         inputs = {
-            "consultation_topic": "consulta médica general",
+            "consultation_topic": "general medical consultation",
             "patient_message": answer,
             "conversation_id": conversation_id,
             "current_question": questions_completed + 1,
@@ -171,28 +171,28 @@ async def submit_interview_answer(conversation_id: str, answer: str):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error procesando respuesta: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing answer: {str(e)}")
 
 
 @router.post("/analysis/preliminary")
 async def generate_preliminary_analysis(conversation_id: str):
     """Paso 3: Generar análisis preliminar e hipótesis usando CrewAI"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.SPECIFIC_QUESTIONS_ANALYSIS:
-        raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
+        raise HTTPException(status_code=400, detail=f"Incorrect phase. Current: {state['phase']}")
     
     try:
         # Preparar datos de entrevista para análisis
         interview_summary = "\n".join([
-            f"Pregunta {i+1}: {msg.content}" 
+            f"Question {i+1}: {msg.content}" 
             for i, msg in enumerate([msg for msg in state["messages"] if msg.role == MessageRole.USER][:7])
         ])
         
         inputs = {
-            "consultation_topic": "consulta médica general",
+            "consultation_topic": "general medical consultation",
             "interview_data": interview_summary,
             "conversation_id": conversation_id,
             "interview_responses": state.get("interview_data", {})
@@ -216,22 +216,22 @@ async def generate_preliminary_analysis(conversation_id: str):
             "phase": state["phase"],
             "preliminary_analysis": analysis_result,
             "agent_used": "preliminary_analyst",
-            "next_step": "Responder preguntas específicas generadas por el análisis"
+            "next_step": "Answer the specific questions generated by the analysis"
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en análisis preliminar: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error in preliminary analysis: {str(e)}")
 
 
 @router.post("/questions/specific")
 async def answer_specific_questions(conversation_id: str, answers: List[str]):
     """Paso 4: Responder preguntas específicas para el modelo de clasificación"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.SPECIFIC_QUESTIONS:
-        raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
+        raise HTTPException(status_code=400, detail=f"Incorrect phase. Current: {state['phase']}")
     
     # Guardar respuestas específicas
     state["specific_answers"] = answers
@@ -240,7 +240,7 @@ async def answer_specific_questions(conversation_id: str, answers: List[str]):
     return {
         "conversation_id": conversation_id,
         "phase": state["phase"],
-        "message": "Respuestas específicas recibidas. Procediendo a estructurar datos.",
+        "message": "Specific answers received. Proceeding to structure data.",
         "answers_count": len(answers)
     }
 
@@ -249,16 +249,16 @@ async def answer_specific_questions(conversation_id: str, answers: List[str]):
 async def structure_and_classify_data(conversation_id: str):
     """Paso 4: Estructurar datos JSON y ejecutar clasificación con modelo Hugging Face"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.JSON_STRUCTURING_AND_CLASSIFICATION:
-        raise HTTPException(status_code=400, detail=f"Fase incorrecta. Actual: {state['phase']}")
+        raise HTTPException(status_code=400, detail=f"Incorrect phase. Current: {state['phase']}")
     
     try:
         # Preparar todos los datos para estructuración y clasificación
         inputs = {
-            "consultation_topic": "consulta médica general",
+            "consultation_topic": "general medical consultation",
             "conversation_id": conversation_id,
             "interview_data": state.get("interview_data", {}),
             "analysis_data": state.get("analysis_data", {}),
@@ -286,18 +286,18 @@ async def structure_and_classify_data(conversation_id: str):
             "process_completed": True,
             "agent_used": "json_data_structurer",
             "model_used": "hugging_face_medical_classifier",
-            "message": "Proceso completo de anamnesis conversacional y clasificación completado exitosamente."
+            "message": "Complete conversational anamnesis and classification process finished successfully."
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en estructuración y clasificación: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error in structuring and classification: {str(e)}")
 
 
 @router.get("/flow/status/{conversation_id}")
 async def get_flow_status(conversation_id: str):
     """Obtener estado actual del flujo"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     
@@ -315,11 +315,11 @@ async def get_flow_status(conversation_id: str):
 async def get_final_data(conversation_id: str):
     """Obtener datos estructurados finales para modelo de clasificación"""
     if conversation_id not in FLOW_STATE:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        raise HTTPException(status_code=404, detail="Conversation not found")
     
     state = FLOW_STATE[conversation_id]
     if state["phase"] != FlowPhase.COMPLETED:
-        raise HTTPException(status_code=400, detail="Flujo no completado")
+        raise HTTPException(status_code=400, detail="Flow not completed")
     
     return {
         "conversation_id": conversation_id,
@@ -343,12 +343,12 @@ async def get_model_info():
     return {
         "name": "CrewAI + Hugging Face Medical Classification System",
         "version": "2.0",
-        "description": "Sistema de clasificación médica usando CrewAI para estructuración y Hugging Face para clasificación",
+        "description": "Medical classification system using CrewAI for structuring and Hugging Face for classification",
         "flow": [
-            "1. Agente Conversacional (CrewAI)",
-            "2. Agente de Preguntas Específicas (CrewAI)", 
-            "3. Agente de Estructuración JSON (CrewAI)",
-            "4. Modelo de Clasificación (Hugging Face)"
+            "1. Conversational Agent (CrewAI)",
+            "2. Specific Questions Agent (CrewAI)", 
+            "3. JSON Structuring Agent (CrewAI)",
+            "4. Classification Model (Hugging Face)"
         ],
         "categories": [
             "neurological", "cardiovascular", "respiratory", 

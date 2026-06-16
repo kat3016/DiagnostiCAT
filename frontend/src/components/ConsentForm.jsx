@@ -10,8 +10,8 @@ const ConsentForm = ({ onConsentGiven }) => {
     try {
       await onConsentGiven(true);
     } catch (error) {
-      console.error('Error al procesar consentimiento:', error);
-      alert('Error al procesar el consentimiento. Intente nuevamente.');
+      console.error('Error processing consent:', error);
+      alert('Error processing consent. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -22,7 +22,7 @@ const ConsentForm = ({ onConsentGiven }) => {
     try {
       await onConsentGiven(false);
     } catch (error) {
-      console.error('Error al procesar consentimiento:', error);
+      console.error('Error processing consent:', error);
     } finally {
       setIsLoading(false);
     }
@@ -32,94 +32,94 @@ const ConsentForm = ({ onConsentGiven }) => {
     <div className="consent-container">
       <div className="consent-card">
         <div className="consent-header">
-          <h1>🏥 DiagnostiCAT</h1>
-          <h2>Consentimiento para Asistencia Médica por IA</h2>
+          <h1>DiagnostiCAT</h1>
+          <h2>Consent for AI Medical Assistance</h2>
         </div>
 
         <div className="consent-content">
           <div className="disclaimer-box">
-            <h3>⚠️ IMPORTANTE - DISCLAIMER MÉDICO</h3>
+            <h3>IMPORTANT - MEDICAL DISCLAIMER</h3>
             <p>
-              DiagnostiCAT es una herramienta de <strong>asistencia médica inicial</strong> basada en 
-              inteligencia artificial. Esta aplicación <strong>NO reemplaza</strong> la consulta con 
-              un profesional médico calificado.
+              DiagnostiCAT is an <strong>initial medical assistance</strong> tool based on
+              artificial intelligence. This application <strong>DOES NOT replace</strong> consultation with
+              a qualified medical professional.
             </p>
           </div>
 
           <div className="consent-text">
-            <h4>Al usar este servicio, usted entiende y acepta que:</h4>
+            <h4>By using this service, you understand and agree that:</h4>
             <ul>
-              <li>✓ Esta es una herramienta de orientación médica inicial</li>
-              <li>✓ No constituye un diagnóstico médico definitivo</li>
-              <li>✓ En caso de emergencia, debe acudir inmediatamente a servicios de urgencias</li>
-              <li>✓ Para síntomas graves o persistentes, debe consultar a un médico</li>
-              <li>✓ La información proporcionada será tratada de forma confidencial</li>
-              <li>✓ Los datos se usan exclusivamente para mejorar la atención médica</li>
+              <li>This is an initial medical guidance tool</li>
+              <li>It does not constitute a definitive medical diagnosis</li>
+              <li>In an emergency, you should seek emergency services immediately</li>
+              <li>For severe or persistent symptoms, you should consult a doctor</li>
+              <li>The information provided will be treated confidentially</li>
+              <li>Data is used exclusively to improve medical care</li>
             </ul>
 
             {showFullText && (
               <div className="full-terms">
-                <h4>Términos Detallados:</h4>
+                <h4>Detailed Terms:</h4>
                 <div className="terms-text">
-                  <p><strong>Limitaciones del servicio:</strong></p>
+                  <p><strong>Service limitations:</strong></p>
                   <ul>
-                    <li>No puede realizar diagnósticos definitivos</li>
-                    <li>No prescribe medicamentos</li>
-                    <li>No reemplaza exámenes médicos físicos</li>
-                    <li>Las recomendaciones son orientativas</li>
-                  </ul>
-                  
-                  <p><strong>Privacidad y datos:</strong></p>
-                  <ul>
-                    <li>Sus datos médicos están protegidos</li>
-                    <li>Se almacenan de forma segura y anónima</li>
-                    <li>Se usan para mejorar el servicio</li>
-                    <li>Puede solicitar eliminarlos en cualquier momento</li>
+                    <li>It cannot make definitive diagnoses</li>
+                    <li>It does not prescribe medications</li>
+                    <li>It does not replace physical medical exams</li>
+                    <li>Recommendations are for guidance only</li>
                   </ul>
 
-                  <p><strong>Cuándo buscar atención médica inmediata:</strong></p>
+                  <p><strong>Privacy and data:</strong></p>
                   <ul>
-                    <li>Dolor en el pecho o dificultad para respirar</li>
-                    <li>Síntomas neurológicos graves</li>
-                    <li>Sangrado abundante</li>
-                    <li>Pérdida de conciencia</li>
-                    <li>Cualquier emergencia médica</li>
+                    <li>Your medical data is protected</li>
+                    <li>It is stored securely and anonymously</li>
+                    <li>It is used to improve the service</li>
+                    <li>You may request deletion at any time</li>
+                  </ul>
+
+                  <p><strong>When to seek immediate medical care:</strong></p>
+                  <ul>
+                    <li>Chest pain or difficulty breathing</li>
+                    <li>Severe neurological symptoms</li>
+                    <li>Heavy bleeding</li>
+                    <li>Loss of consciousness</li>
+                    <li>Any medical emergency</li>
                   </ul>
                 </div>
               </div>
             )}
 
-            <button 
+            <button
               className="toggle-terms-btn"
               onClick={() => setShowFullText(!showFullText)}
             >
-              {showFullText ? 'Ocultar términos detallados ↑' : 'Ver términos detallados ↓'}
+              {showFullText ? 'Hide detailed terms' : 'View detailed terms'}
             </button>
           </div>
         </div>
 
         <div className="consent-actions">
           <div className="consent-question">
-            <p><strong>¿Acepta estos términos y condiciones?</strong></p>
+            <p><strong>Do you accept these terms and conditions?</strong></p>
             <p className="consent-note">
-              Al aceptar, podrá continuar con la consulta médica asistida por IA.
+              By accepting, you can continue with the AI-assisted medical consultation.
             </p>
           </div>
 
           <div className="consent-buttons">
-            <button 
-              className="btn-decline" 
+            <button
+              className="btn-decline"
               onClick={handleDecline}
               disabled={isLoading}
             >
-              {isLoading ? 'Procesando...' : 'No Acepto'}
+              {isLoading ? 'Processing...' : 'I Do Not Accept'}
             </button>
-            <button 
-              className="btn-accept" 
+            <button
+              className="btn-accept"
               onClick={handleAccept}
               disabled={isLoading}
             >
-              {isLoading ? 'Procesando...' : 'Sí, Acepto y Continuar'}
+              {isLoading ? 'Processing...' : 'I Accept and Continue'}
             </button>
           </div>
         </div>
@@ -127,9 +127,9 @@ const ConsentForm = ({ onConsentGiven }) => {
         <div className="consent-footer">
           <p>
             <small>
-              🔒 Sus datos están protegidos | 
-              📞 En emergencias, llame al 123 | 
-              💻 Versión MVP 1.0
+              Your data is protected |
+              In emergencies, call 911 |
+              MVP Version 1.0
             </small>
           </p>
         </div>

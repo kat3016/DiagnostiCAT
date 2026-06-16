@@ -124,51 +124,51 @@ class MedicalDataStructuringService:
     def _llm_extract_structured_data(self, text: str, user_messages: List[str]) -> Dict[str, Any]:
         """Usa LLM para extraer datos estructurados del texto médico"""
         
-        extraction_prompt = f"""Eres un especialista en informática médica. Extrae información estructurada de esta conversación médica.
+        extraction_prompt = f"""You are a medical informatics specialist. Extract structured information from this medical conversation.
 
-TEXTO DE LA CONVERSACIÓN:
+CONVERSATION TEXT:
 {text}
 
-MENSAJES INDIVIDUALES DEL PACIENTE:
+INDIVIDUAL PATIENT MESSAGES:
 {json.dumps(user_messages, ensure_ascii=False, indent=2)}
 
-INSTRUCCIONES:
-1. Identifica el motivo de consulta principal
-2. Extrae el síntoma principal y sus características
-3. Identifica antecedentes médicos mencionados
-4. Detecta hábitos relevantes (tabaquismo, alcohol, etc.)
-5. Lista síntomas asociados adicionales
-6. Determina duración/inicio de síntomas
+INSTRUCTIONS:
+1. Identify the main reason for consultation
+2. Extract the main symptom and its characteristics
+3. Identify any mentioned medical history
+4. Detect relevant habits (smoking, alcohol, etc.)
+5. List additional associated symptoms
+6. Determine symptom duration/onset
 
-FORMATO DE RESPUESTA (JSON válido):
+RESPONSE FORMAT (valid JSON):
 {{
-    "motivo_consulta": "descripción clara del motivo principal",
+    "motivo_consulta": "clear description of the main reason",
     "enfermedad_actual": {{
-        "sintoma_principal": "síntoma más relevante",
-        "inicio": "duración o momento de inicio",
-        "caracteristicas": "descripción de características del síntoma"
+        "sintoma_principal": "most relevant symptom",
+        "inicio": "duration or onset time",
+        "caracteristicas": "description of symptom characteristics"
     }},
-    "antecedentes_personales": ["lista de antecedentes médicos mencionados"],
-    "antecedentes_familiares": ["antecedentes familiares si se mencionan"],
+    "antecedentes_personales": ["list of mentioned medical history"],
+    "antecedentes_familiares": ["family history if mentioned"],
     "habitos": {{
-        "tabaquismo": "sí/no/desconocido",
-        "alcohol": "sí/no/ocasional/desconocido",
-        "otros": "otros hábitos relevantes"
+        "tabaquismo": "yes/no/unknown",
+        "alcohol": "yes/no/occasional/unknown",
+        "otros": "other relevant habits"
     }},
-    "sintomas_asociados": ["lista de síntomas adicionales"],
-    "intensidad": "nivel de intensidad si se menciona (1-10 o descriptivo)",
-    "factores_agravantes": ["factores que empeoran"],
-    "factores_aliviantes": ["factores que mejoran"]
+    "sintomas_asociados": ["list of additional symptoms"],
+    "intensidad": "intensity level if mentioned (1-10 or descriptive)",
+    "factores_agravantes": ["factors that worsen symptoms"],
+    "factores_aliviantes": ["factors that improve symptoms"]
 }}
 
-Responde SOLO con el JSON válido, sin explicaciones adicionales."""
+Respond ONLY with valid JSON, without additional explanations."""
 
         try:
             # Usar hybrid_agent en lugar de llm_service
             hybrid_llm, provider = create_hybrid_agent()
             
             # Crear el mensaje completo
-            full_message = f"{extraction_prompt}\n\nExtrae la información estructurada según las instrucciones."
+            full_message = f"{extraction_prompt}\n\nExtract the structured information according to the instructions."
             
             # Generar respuesta
             llm_response_content = hybrid_llm.invoke(full_message).content
@@ -204,7 +204,7 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
         text_lower = text.lower()
         
         # Extracción básica del motivo de consulta (primer mensaje del usuario)
-        motivo_consulta = user_messages[0] if user_messages else "consulta médica general"
+        motivo_consulta = user_messages[0] if user_messages else "general medical consultation"
         
         # Detectar síntoma principal usando palabras clave
         sintoma_principal = self._detect_main_symptom(text_lower)
@@ -226,13 +226,13 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
             "enfermedad_actual": {
                 "sintoma_principal": sintoma_principal,
                 "inicio": inicio,
-                "caracteristicas": "requiere más información específica"
+                "caracteristicas": "requires more specific information"
             },
             "antecedentes_personales": antecedentes,
             "antecedentes_familiares": [],
             "habitos": habitos,
             "sintomas_asociados": sintomas_asociados,
-            "intensidad": "no especificada",
+            "intensidad": "unspecified",
             "factores_agravantes": [],
             "factores_aliviantes": []
         }
@@ -254,7 +254,7 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
             if any(pattern in text for pattern in patterns):
                 return symptom
         
-        return "síntoma no especificado"
+        return "unspecified symptom"
     
     def _detect_onset(self, text: str) -> str:
         """Detecta el inicio/duración de los síntomas"""
@@ -273,7 +273,7 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
             if match:
                 return re.sub(pattern, replacement, match.group())
         
-        return "no especificado"
+        return "unspecified"
     
     def _detect_medical_history(self, text: str) -> List[str]:
         """Detecta antecedentes médicos mencionados"""
@@ -292,8 +292,8 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
     def _detect_habits(self, text: str) -> Dict[str, str]:
         """Detecta hábitos mencionados"""
         habits = {
-            "tabaquismo": "desconocido",
-            "alcohol": "desconocido",
+            "tabaquismo": "unknown",
+            "alcohol": "unknown",
             "otros": ""
         }
         
@@ -301,15 +301,15 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
         if any(word in text for word in ["no fumo", "no fumar"]):
             habits["tabaquismo"] = "no"
         elif any(word in text for word in ["fumo", "cigarrillo", "tabaco"]):
-            habits["tabaquismo"] = "sí"
+            habits["tabaquismo"] = "yes"
         
         # Alcohol
         if any(word in text for word in ["no bebo", "no alcohol"]):
             habits["alcohol"] = "no"
         elif any(word in text for word in ["bebo", "alcohol", "copa", "cerveza"]):
-            habits["alcohol"] = "sí"
+            habits["alcohol"] = "yes"
         elif "socialmente" in text or "ocasional" in text:
-            habits["alcohol"] = "ocasional"
+            habits["alcohol"] = "occasional"
         
         return habits
     
@@ -355,20 +355,20 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
     def _create_fallback_structure(self, conversation: Dict[str, Any]) -> Dict[str, Any]:
         """Crea estructura de fallback cuando falla el procesamiento principal"""
         user_messages = self._extract_user_messages(conversation)
-        first_message = user_messages[0] if user_messages else "consulta médica"
+        first_message = user_messages[0] if user_messages else "medical consultation"
         
         return {
             "motivo_consulta": first_message,
             "enfermedad_actual": {
-                "sintoma_principal": "requiere análisis adicional",
-                "inicio": "no especificado",
-                "caracteristicas": "información insuficiente"
+                "sintoma_principal": "requires additional analysis",
+                "inicio": "unspecified",
+                "caracteristicas": "insufficient information"
             },
             "antecedentes_personales": [],
             "antecedentes_familiares": [],
             "habitos": {
-                "tabaquismo": "desconocido",
-                "alcohol": "desconocido",
+                "tabaquismo": "unknown",
+                "alcohol": "unknown",
                 "otros": ""
             },
             "sintomas_asociados": [],
@@ -376,7 +376,7 @@ Responde SOLO con el JSON válido, sin explicaciones adicionales."""
                 "format_version": self.standard_format_version,
                 "structured_timestamp": datetime.now().isoformat(),
                 "processing_method": "fallback_basic",
-                "error": "Error en procesamiento principal"
+                "error": "Error in main processing"
             }
         }
 

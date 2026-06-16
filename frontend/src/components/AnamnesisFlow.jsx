@@ -30,7 +30,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
         setCurrentQuestion(response);
       }
     } catch (error) {
-      console.error('Error cargando pregunta:', error);
+      console.error('Error loading question:', error);
       setError(error.message);
     } finally {
       setIsLoading(false);
@@ -43,8 +43,8 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
       const summaryResponse = await anamnesisService.getSummary(conversationId);
       setSummary(summaryResponse);
     } catch (error) {
-      console.error('Error cargando resumen:', error);
-      setError('Error al generar el resumen de la anamnesis');
+      console.error('Error loading summary:', error);
+      setError('Error generating the anamnesis summary');
     }
   };
 
@@ -56,13 +56,13 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
       const { anamnesisService } = await import('../services/apiService');
       await anamnesisService.submitAnswer(conversationId, key, value);
       
-      // Actualizar respuestas localmente
+      // Update answers locally
       setAnswers(prev => ({ ...prev, [key]: value }));
       
-      // Cargar siguiente pregunta
+      // Load next question
       await loadNextQuestion();
     } catch (error) {
-      console.error('Error enviando respuesta:', error);
+      console.error('Error sending answer:', error);
       setError(error.message);
     } finally {
       setIsLoading(false);
@@ -79,7 +79,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
         return (
           <div className="question-input">
             <textarea
-              placeholder="Escriba su respuesta aquí..."
+              placeholder="Type your answer here..."
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -93,7 +93,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
               autoFocus
             />
             <div className="input-hint">
-              Presione Enter para continuar
+              Press Enter to continue
             </div>
           </div>
         );
@@ -103,7 +103,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
           <div className="question-input">
             <input
               type="number"
-              placeholder={validation?.placeholder || "Ingrese un número"}
+              placeholder={validation?.placeholder || "Enter a number"}
               min={validation?.min}
               max={validation?.max}
               onKeyDown={(e) => {
@@ -144,14 +144,14 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
               onClick={() => handleAnswer(key, true)}
               disabled={isLoading}
             >
-              ✅ Sí
+              Yes
             </button>
             <button
               className="option-button no"
               onClick={() => handleAnswer(key, false)}
               disabled={isLoading}
             >
-              ❌ No
+              No
             </button>
           </div>
         );
@@ -177,7 +177,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
           <div className="question-input">
             <input
               type="text"
-              placeholder="Escriba su respuesta..."
+              placeholder="Type your answer..."
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const value = e.target.value.trim();
@@ -198,10 +198,10 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
     return (
       <div className="anamnesis-container">
         <div className="anamnesis-card error">
-          <h2>❌ Error</h2>
+          <h2>Error</h2>
           <p>{error}</p>
           <button onClick={loadNextQuestion} className="retry-button">
-            🔄 Intentar nuevamente
+            Try again
           </button>
         </div>
       </div>
@@ -213,12 +213,12 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
       <div className="anamnesis-container">
         <div className="anamnesis-card completed">
           <div className="completion-header">
-            <h2>✅ Anamnesis Completada</h2>
-            <p>Hemos registrado toda la información necesaria.</p>
+            <h2>Anamnesis Completed</h2>
+            <p>We have recorded all the necessary information.</p>
           </div>
 
           <div className="summary-section">
-            <h3>📋 Resumen de la Anamnesis</h3>
+            <h3>Anamnesis Summary</h3>
             <div className="structured-data">
               {summary.structured && (
                 <div className="summary-grid">
@@ -234,14 +234,14 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
 
             {summary.summary && (
               <div className="ai-summary">
-                <h4>🤖 Análisis del Asistente</h4>
+                <h4>Assistant Analysis</h4>
                 <p>{summary.summary}</p>
               </div>
             )}
 
             {summary.follow_up_questions && summary.follow_up_questions.length > 0 && (
               <div className="follow-up-section">
-                <h4>❓ Preguntas de Seguimiento</h4>
+                <h4>Follow-Up Questions</h4>
                 <ul>
                   {summary.follow_up_questions.map((question, index) => (
                     <li key={index}>{question}</li>
@@ -256,7 +256,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
               className="btn-continue-chat"
               onClick={() => onComplete(summary)}
             >
-              💬 Continuar con Chat Médico
+              Continue with Medical Chat
             </button>
           </div>
         </div>
@@ -268,10 +268,10 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
     <div className="anamnesis-container">
       <div className="anamnesis-card">
         <div className="anamnesis-header">
-          <h1>📝 Anamnesis Médica</h1>
-          <p>Recopilación estructurada de información médica</p>
+          <h1>Medical Anamnesis</h1>
+          <p>Structured medical information collection</p>
           <div className="progress-indicator">
-            <span>Pregunta {Object.keys(answers).length + 1}</span>
+            <span>Question {Object.keys(answers).length + 1}</span>
           </div>
         </div>
 
@@ -279,7 +279,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
           {isLoading ? (
             <div className="loading-state">
               <div className="loading-spinner"></div>
-              <p>Procesando información...</p>
+              <p>Processing information...</p>
             </div>
           ) : currentQuestion ? (
             <>
@@ -294,20 +294,20 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
               
               {currentQuestion.help_text && (
                 <div className="help-text">
-                  💡 {currentQuestion.help_text}
+                  {currentQuestion.help_text}
                 </div>
               )}
             </>
           ) : (
             <div className="no-question">
-              <p>Preparando siguiente pregunta...</p>
+              <p>Preparing next question...</p>
             </div>
           )}
         </div>
 
         {Object.keys(answers).length > 0 && (
           <div className="answers-summary">
-            <h4>📋 Respuestas registradas:</h4>
+            <h4>Recorded answers:</h4>
             <div className="answers-list">
               {Object.entries(answers).slice(-3).map(([key, value]) => (
                 <div key={key} className="answer-item">
@@ -317,7 +317,7 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
               ))}
               {Object.keys(answers).length > 3 && (
                 <div className="more-answers">
-                  ... y {Object.keys(answers).length - 3} más
+                  ... and {Object.keys(answers).length - 3} more
                 </div>
               )}
             </div>
@@ -328,26 +328,26 @@ const AnamnesisFlow = ({ conversationId, onComplete }) => {
   );
 };
 
-// Funciones de utilidad
+// Utility functions
 const formatFieldName = (key) => {
   const fieldNames = {
-    'chief_complaint': 'Motivo de consulta',
-    'symptom_duration': 'Duración de síntomas',
-    'pain_scale': 'Escala de dolor',
-    'fever': 'Fiebre',
-    'allergies': 'Alergias',
-    'medications': 'Medicamentos',
-    'medical_history': 'Antecedentes médicos',
-    'family_history': 'Antecedentes familiares',
-    'social_history': 'Historia social',
-    'review_of_systems': 'Revisión por sistemas',
+    'chief_complaint': 'Reason for consultation',
+    'symptom_duration': 'Symptom duration',
+    'pain_scale': 'Pain scale',
+    'fever': 'Fever',
+    'allergies': 'Allergies',
+    'medications': 'Medications',
+    'medical_history': 'Medical history',
+    'family_history': 'Family history',
+    'social_history': 'Social history',
+    'review_of_systems': 'Review of systems',
   };
   return fieldNames[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
 const formatValue = (value) => {
   if (typeof value === 'boolean') {
-    return value ? 'Sí' : 'No';
+    return value ? 'Yes' : 'No';
   }
   if (Array.isArray(value)) {
     return value.join(', ');
