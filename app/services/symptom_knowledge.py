@@ -89,38 +89,63 @@ SYMPTOM_PHRASES: Dict[str, List[str]] = {
     "insomnia": ["can't sleep", "insomnia", "trouble sleeping", "insomnio"],
 }
 
-# Negation cues that flip a detected phrase from "present" to explicitly absent.
-NEGATION_CUES = [
-    "no ", "not ", "never ", "don't ", "doesn't ", "haven't ", "hasn't ",
-    "without ", "denies ", "no tengo", "no he tenido", "sin ",
-]
+# Negation triggers that flip a detected phrase from "present" to explicitly
+# absent. Word-boundary-matched (via _NEGATION_TRIGGER_RE below) so "no" never
+# matches inside "now"/"notice" and "sin" never matches inside "since".
+_NEGATION_TRIGGER_RE = re.compile(
+    r"\b(?:no|not|never|denies|deny|denying|without|sin|niega)\b"
+    r"|don't|doesn't|haven't|hasn't|no tengo|no he tenido"
+)
+# A negation trigger's scope ends early at a contrast word (the clause after
+# "but"/"however" is no longer under the earlier denial).
+_SOFT_TERMINATOR_RE = re.compile(r"\b(?:but|however|although|except|though|pero|aunque)\b")
+# Forward word-distance cap, so a single trigger can still govern a long
+# denied list ("no fever, neck stiffness, or weakness or numbness anywhere")
+# without bleeding indefinitely into unrelated later text.
+_NEGATION_SCOPE_WORDS = 15
+_SENTENCE_SPLIT_RE = re.compile(r"[.!?\n]+")
+
+
+def _negated_spans(sentence: str) -> List[tuple]:
+    """Returns char spans within `sentence` (already lowercased) that fall
+    under a negation trigger's scope."""
+    spans = []
+    for trig in _NEGATION_TRIGGER_RE.finditer(sentence):
+        scope_start = trig.end()
+        soft = _SOFT_TERMINATOR_RE.search(sentence, scope_start)
+        scope_end = soft.start() if soft else len(sentence)
+        words = list(re.finditer(r'\S+', sentence[scope_start:scope_end]))
+        if len(words) > _NEGATION_SCOPE_WORDS:
+            scope_end = scope_start + words[_NEGATION_SCOPE_WORDS - 1].end()
+        spans.append((scope_start, scope_end))
+    return spans
 
 
 def detect_symptoms(text: str) -> Set[str]:
     """Deterministically detects canonical symptom keys present in free text.
 
-    Performs a simple negation check: if a negation cue appears within the
-    8 words preceding the matched phrase, the symptom is NOT recorded as present.
+    Negation is scoped per-sentence (never crosses a sentence boundary) and
+    extends forward from each trigger word up to _NEGATION_SCOPE_WORDS words,
+    so it correctly covers denied lists ("no fever, stiffness, or weakness")
+    without misfiring on unrelated text later in the message.
     """
-    text_lower = f" {text.lower()} "
     found: Set[str] = set()
 
-    for canonical, phrases in SYMPTOM_PHRASES.items():
-        for phrase in phrases:
-            idx = text_lower.find(phrase)
-            if idx == -1:
+    for raw_sentence in _SENTENCE_SPLIT_RE.split(text.lower()):
+        sentence = f" {raw_sentence} "
+        negated_spans = _negated_spans(sentence)
+
+        for canonical, phrases in SYMPTOM_PHRASES.items():
+            if canonical in found:
                 continue
-            window_start = max(0, idx - 40)
-            preceding = text_lower[window_start:idx]
-            # Negation never crosses a sentence boundary (a denial earlier in
-            # the message must not suppress an affirmed symptom in the next sentence).
-            last_boundary = max(preceding.rfind('.'), preceding.rfind('!'), preceding.rfind('?'), preceding.rfind('\n'))
-            if last_boundary != -1:
-                preceding = preceding[last_boundary + 1:]
-            negated = any(cue in preceding for cue in NEGATION_CUES)
-            if not negated:
-                found.add(canonical)
-            break
+            for phrase in phrases:
+                idx = sentence.find(phrase)
+                if idx == -1:
+                    continue
+                is_negated = any(start <= idx < end for start, end in negated_spans)
+                if not is_negated:
+                    found.add(canonical)
+                break
 
     return found
 
