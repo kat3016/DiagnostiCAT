@@ -22,6 +22,26 @@ except ImportError:
 from app.crew.hybrid_agent import create_hybrid_agent
 
 
+# Clinical safety rules: symptom clusters that override ML classification
+_NEUROLOGICAL_STRONG = [
+    "headache", "migraine", "head pain", "head hurts", "dizziness", "vertigo",
+    "photophobia", "phonophobia", "aura", "unilateral head", "throbbing head",
+    "cefalea", "migraña", "mareo", "dolor de cabeza", "sensibilidad a la luz",
+    "sensibilidad al ruido"
+]
+
+_RESPIRATORY_REQUIRED = [
+    "cough", "sore throat", "congestion", "runny nose", "wheezing",
+    "shortness of breath", "breathing difficulty", "dyspnea", "breathless",
+    "tos", "garganta", "congestion nasal", "dificultad respirar", "ahogo"
+]
+
+_CARDIOVASCULAR_INDICATORS = [
+    "chest pain", "palpitation", "irregular heartbeat", "edema", "leg swelling",
+    "syncope", "chest tightness with exertion", "dolor en el pecho", "palpitaciones"
+]
+
+
 class ClassificationModel:
     """Modelo de clasificación médica usando Hugging Face"""
     
@@ -244,14 +264,23 @@ class ClassificationModel:
                         secondary_categories.append(labels[i])
                 
                 print(f"✅ Clasificación exitosa: {primary_category} ({confidence_score:.3f})")
-                
+
             else:
                 # Fallback a clasificación por palabras clave
                 print("⚠️ Resultados HF vacíos, usando clasificación por palabras clave")
                 primary_category = self._classify_by_keywords(text_input)
                 confidence_score = 0.6
                 secondary_categories = []
-            
+
+            # Apply clinical safety rules to catch contradictory classifications
+            corrected_cat, corrected_conf, override_reason = self._apply_clinical_safety_rules(
+                text_input, primary_category, confidence_score
+            )
+            if override_reason:
+                print(f"⚕️ Clinical rule applied: {override_reason}")
+                primary_category = corrected_cat
+                confidence_score = corrected_conf
+
             # Generar recomendaciones basadas en la categoría
             recommendations = self._generate_recommendations(primary_category, confidence_score)
             
@@ -280,40 +309,41 @@ class ClassificationModel:
             return self._create_error_classification(f"Error procesando resultados HF: {str(e)}")
     
     def _classify_with_llm_fallback(self, structured_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Clasificación usando LLM como fallback"""
-        classification_prompt = f"""Eres un modelo de clasificación médica experto. Analiza los datos estructurados de anamnesis y clasifica el caso.
+        """Classification using LLM as fallback"""
+        classification_prompt = f"""You are an expert medical classification model. Analyze the structured anamnesis data and classify the case.
 
-CATEGORÍAS DISPONIBLES:
-- neurological: Problemas neurológicos (cefaleas, migrañas, epilepsia, etc.)
-- cardiovascular: Problemas cardíacos y vasculares
-- respiratory: Problemas respiratorios
-- gastrointestinal: Problemas digestivos
-- musculoskeletal: Problemas músculo-esqueléticos
-- dermatological: Problemas de piel
-- psychiatric: Problemas de salud mental
-- other: Otros casos no clasificables
+AVAILABLE CATEGORIES:
+- neurological: Neurological problems (headaches, migraines, epilepsy, etc.)
+- cardiovascular: Heart and vascular problems
+- respiratory: Respiratory problems
+- gastrointestinal: Digestive problems
+- musculoskeletal: Musculoskeletal problems
+- dermatological: Skin problems
+- psychiatric: Mental health problems
+- other: Other unclassifiable cases
 
-INSTRUCCIONES CRÍTICAS:
-1. Responde ÚNICAMENTE con JSON válido, sin texto adicional
-2. No incluyas explicaciones antes o después del JSON
-3. Usa comillas dobles para todas las strings
-4. Asegúrate de que todas las llaves y corchetes estén balanceados
+CRITICAL INSTRUCTIONS:
+1. Respond ONLY with valid JSON, no additional text
+2. Do not include explanations before or after the JSON
+3. Use double quotes for all strings
+4. Write all text values in English
+5. Ensure all braces and brackets are balanced
 
-FORMATO DE RESPUESTA (JSON ÚNICAMENTE):
+RESPONSE FORMAT (JSON ONLY):
 {{
-  "primary_category": "categoria_principal",
+  "primary_category": "main_category",
   "confidence_score": 0.85,
-  "secondary_categories": ["categoria_secundaria"],
-  "key_indicators": ["indicador1", "indicador2"],
+  "secondary_categories": ["secondary_category"],
+  "key_indicators": ["indicator1", "indicator2"],
   "recommendations": [
-    "recomendacion1",
-    "recomendacion2"
+    "recommendation1",
+    "recommendation2"
   ],
   "urgency_level": "low",
-  "reasoning": "Explicación breve del diagnóstico"
+  "reasoning": "Brief explanation of the classification in English"
 }}
 
-IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto adicional, explicaciones o comentarios."""
+IMPORTANT: Respond ONLY with the valid JSON shown above, no additional text, explanations, or comments."""
         
         try:
             # Usar hybrid_agent en lugar de llm_service
@@ -344,6 +374,19 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
                     if field not in classification_result:
                         raise ValueError(f"Campo requerido faltante: {field}")
                 
+                # Apply clinical safety rules
+                text_content = json.dumps(structured_data, ensure_ascii=False).lower()
+                corrected_cat, corrected_conf, override_reason = self._apply_clinical_safety_rules(
+                    text_content,
+                    classification_result.get("primary_category", "other"),
+                    classification_result.get("confidence_score", 0.5)
+                )
+                if override_reason:
+                    print(f"⚕️ Clinical rule applied (LLM fallback): {override_reason}")
+                    classification_result["primary_category"] = corrected_cat
+                    classification_result["confidence_score"] = corrected_conf
+                    classification_result["reasoning"] = override_reason
+
                 # Agregar metadata del modelo
                 classification_result.update({
                     "model_name": self.model_name + "_llm_fallback",
@@ -536,21 +579,34 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
         
         primary_category = "other"
         confidence = 0.5
-        
-        # Clasificación básica por palabras clave
-        if any(word in text_content for word in ["dolor cabeza", "cefalea", "migraña", "mareo"]):
+
+        # Keyword classification
+        if any(word in text_content for word in ["dolor cabeza", "cefalea", "migraña", "mareo",
+                                                   "headache", "migraine", "dizziness"]):
             primary_category = "neurological"
             confidence = 0.7
-        elif any(word in text_content for word in ["dolor pecho", "corazón", "presión"]):
+        elif any(word in text_content for word in ["dolor pecho", "corazón", "presión",
+                                                    "chest pain", "palpitation"]):
             primary_category = "cardiovascular"
             confidence = 0.7
-        elif any(word in text_content for word in ["tos", "respirar", "pulmón", "aire"]):
+        elif any(word in text_content for word in ["tos", "respirar", "pulmón", "aire",
+                                                    "cough", "breathing", "respiratory"]):
             primary_category = "respiratory"
             confidence = 0.7
-        elif any(word in text_content for word in ["estómago", "nausea", "vómito", "digestivo"]):
+        elif any(word in text_content for word in ["estómago", "nausea", "vómito", "digestivo",
+                                                    "stomach", "nausea", "vomit"]):
             primary_category = "gastrointestinal"
             confidence = 0.7
-        
+
+        # Apply clinical safety rules to keyword result too
+        corrected_cat, corrected_conf, override_reason = self._apply_clinical_safety_rules(
+            text_content, primary_category, confidence
+        )
+        if override_reason:
+            print(f"⚕️ Clinical rule applied (keyword fallback): {override_reason}")
+            primary_category = corrected_cat
+            confidence = corrected_conf
+
         return {
             "primary_category": primary_category,
             "confidence_score": confidence,
@@ -607,6 +663,56 @@ IMPORTANTE: Responde ÚNICAMENTE con el JSON válido mostrado arriba, sin texto 
             "fallback_available": True
         }
     
+    def _apply_clinical_safety_rules(
+        self, text: str, primary_category: str, confidence: float
+    ) -> tuple:
+        """Override ML category when it contradicts the detected symptom cluster.
+
+        Returns (corrected_category, corrected_confidence, override_reason).
+        """
+        text_lower = text.lower()
+
+        neuro_score = sum(1 for ind in _NEUROLOGICAL_STRONG if ind in text_lower)
+        has_respiratory = any(ind in text_lower for ind in _RESPIRATORY_REQUIRED)
+        has_cardiovascular = any(ind in text_lower for ind in _CARDIOVASCULAR_INDICATORS)
+
+        # Rule 1: respiratory category with NO respiratory symptoms → reclassify
+        if primary_category == "respiratory" and not has_respiratory:
+            if neuro_score >= 2:
+                return (
+                    "neurological",
+                    min(confidence + 0.10, 0.82),
+                    "Clinical override: no respiratory indicators; neurological cluster detected"
+                )
+            if has_cardiovascular:
+                return (
+                    "cardiovascular",
+                    min(confidence + 0.05, 0.75),
+                    "Clinical override: no respiratory indicators; cardiovascular cluster detected"
+                )
+
+        # Rule 2: strong neurological cluster (≥ 3 indicators) always wins
+        if neuro_score >= 3 and primary_category not in ("neurological",):
+            return (
+                "neurological",
+                min(confidence + 0.10, 0.82),
+                f"Clinical override: {neuro_score} neurological indicators detected"
+            )
+
+        # Rule 3: migraine-specific override (photophobia OR phonophobia present)
+        migraine_specific = any(kw in text_lower for kw in [
+            "photophobia", "phonophobia", "aura", "unilateral head",
+            "sensibilidad a la luz", "sensibilidad al ruido"
+        ])
+        if migraine_specific and primary_category != "neurological":
+            return (
+                "neurological",
+                min(confidence + 0.15, 0.85),
+                "Clinical override: migraine-specific indicators (photophobia/phonophobia/aura)"
+            )
+
+        return primary_category, confidence, ""
+
     def _extract_json_from_text(self, text: str) -> str:
         """Extrae JSON válido de un texto que puede contener contenido adicional"""
         import re

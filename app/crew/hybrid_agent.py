@@ -59,49 +59,72 @@ def create_hybrid_agent():
     else:
         raise Exception("Ni NVIDIA ni OpenAI están configurados correctamente")
 
-def generate_questions_hybrid(interview_data: str) -> dict:
-    """Genera preguntas usando el mejor agente disponible"""
-    
+def generate_questions_hybrid(interview_data: str, already_covered: str = "") -> dict:
+    """Generates questions using the best available agent.
+
+    already_covered: newline-delimited list of topics already answered in the
+    general interview.  The LLM is instructed not to repeat these topics.
+    """
+
     try:
         llm, provider = create_hybrid_agent()
-        
-        prompt = f"""
-Eres un médico especialista en diagnóstico diferencial. Analiza esta entrevista médica y genera:
 
-1. Exactamente 3 hipótesis preliminares (NO diagnósticos definitivos)
-2. Exactamente 5 preguntas específicas
+        already_covered_section = ""
+        if already_covered:
+            already_covered_section = f"""
+TOPICS ALREADY COLLECTED — DO NOT ask about any of these again:
+{already_covered}
 
-INFORMACIÓN DE LA ENTREVISTA:
-{interview_data}
-
-FORMATO REQUERIDO:
-HIPÓTESIS PRELIMINARES:
-1. [Hipótesis preliminar 1]
-2. [Hipótesis preliminar 2]  
-3. [Hipótesis preliminar 3]
-
-PREGUNTAS ESPECÍFICAS PARA MODELO DE CLASIFICACIÓN:
-1. [Pregunta específica 1]
-2. [Pregunta específica 2]
-3. [Pregunta específica 3]
-4. [Pregunta específica 4]
-5. [Pregunta específica 5]
 """
-        
-        print(f"🤖 Generando preguntas con {provider.upper()}...")
+
+        prompt = f"""You are a specialist physician in differential diagnosis. Analyze this medical interview and generate exactly 3 preliminary hypotheses and exactly 5 specific questions.
+
+PATIENT INTERVIEW DATA:
+{interview_data}
+{already_covered_section}
+The 5 specific questions MUST:
+- Address ONLY details not already covered in the topics above
+- Help differentiate between the top 3 differential diagnoses
+- Explore red flags or alarm symptoms relevant to the chief complaint
+- Ask about specific characteristics (quality, radiation, pattern) that distinguish conditions
+- NEVER repeat onset timing, numeric intensity rating, basic medication list, or the main complaint description
+
+Respond using EXACTLY this format (keep these exact section headers):
+
+PRELIMINARY HYPOTHESES:
+1. [First preliminary hypothesis - describe a possible condition without being definitive]
+2. [Second preliminary hypothesis]
+3. [Third preliminary hypothesis]
+
+SPECIFIC QUESTIONS FOR CLASSIFICATION MODEL:
+1. [First specific question to clarify the clinical picture]?
+2. [Second specific question]?
+3. [Third specific question]?
+4. [Fourth specific question]?
+5. [Fifth specific question]?
+
+IMPORTANT RULES:
+- Write ALL content in English only
+- Every hypothesis must describe a possible condition without constituting a definitive diagnosis
+- Every question must end with a question mark (?)
+- Questions must be clinically relevant and specific to the patient's symptoms
+- Do NOT add explanations or commentary outside the required format
+"""
+
+        print(f"🤖 Generating questions with {provider.upper()}...")
         response = llm.invoke(prompt)
-        
-        print(f"✅ Preguntas generadas exitosamente por {provider.upper()}")
-        
+
+        print(f"✅ Questions generated successfully by {provider.upper()}")
+
         return {
             "success": True,
             "content": response.content,
             "provider": provider,
             "model": "nvidia/llama-3.1-nemotron-70b-instruct" if provider == "nvidia" else settings.OPENAI_MODEL
         }
-        
+
     except Exception as e:
-        print(f"❌ Error en agente híbrido: {e}")
+        print(f"❌ Error in hybrid agent: {e}")
         return {
             "success": False,
             "error": str(e),

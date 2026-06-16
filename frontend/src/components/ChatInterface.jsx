@@ -237,11 +237,20 @@ Have a good day.`,
           <div key={index} className={`message ${message.role} ${message.isError ? 'error' : ''} ${message.isWelcome ? 'welcome' : ''}`}>
             <div className="message-bubble">
               <div className="message-text">
-                {message.content.split('\n').map((line, i) => (
-                  <div key={i} className="text-line">
-                    {line || <br />}
-                  </div>
-                ))}
+                {message.role === 'assistant'
+                  ? message.content.split('\n').map((line, i) => (
+                      <div
+                        key={i}
+                        className="text-line"
+                        dangerouslySetInnerHTML={{ __html: line || '&nbsp;' }}
+                      />
+                    ))
+                  : message.content.split('\n').map((line, i) => (
+                      <div key={i} className="text-line">
+                        {line || <br />}
+                      </div>
+                    ))
+                }
               </div>
               <div className="message-time">{formatTime(message.timestamp)}</div>
             </div>

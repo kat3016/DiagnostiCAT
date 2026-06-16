@@ -1,50 +1,33 @@
 """
-Servicio de estructuración de datos médicos
-Paso 3: Procesar y transformar información recolectada en formato estructurado
+Medical data structuring service — bilingual NLP extraction (EN + ES)
 """
 
 import json
 import re
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from app.models.medical_models import MessageRole
-# Comentar import de llm_service que usa Ollama y usar hybrid_agent
-# from app.services.llm_service import llm_service
 from app.crew.hybrid_agent import create_hybrid_agent
 
 
 class MedicalDataStructuringService:
-    """Servicio para estructurar datos médicos de conversaciones en formato JSON estándar"""
-    
+    """Structures medical conversation data into standardized JSON."""
+
     def __init__(self):
         self.standard_format_version = "1.0"
         self.semantic_normalizer = SemanticNormalizer()
-    
+
     async def structure_conversation_data(self, conversation: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Convierte una conversación médica completa en formato JSON estructurado
-        
-        Args:
-            conversation: Datos de conversación del medical_chat
-            
-        Returns:
-            Dict con formato JSON estándar para clasificación
-        """
         try:
-            # Extraer información básica de la conversación
             basic_info = self._extract_basic_information(conversation)
-            
-            # Procesar mensajes del usuario
             user_messages = self._extract_user_messages(conversation)
-            
-            # Extraer información específica usando normalización semántica
+
             structured_data = await self._extract_structured_fields(
-                user_messages, 
+                user_messages,
                 conversation.get("symptoms_collected", []),
                 conversation.get("specific_answers", [])
             )
-            
-            # Combinar información básica con datos estructurados
+
             final_structure = {
                 **basic_info,
                 **structured_data,
@@ -55,323 +38,507 @@ class MedicalDataStructuringService:
                     "processing_method": "semantic_nlp_extraction"
                 }
             }
-            
-            # Validar estructura final
+
             self._validate_structure(final_structure)
-            
             return final_structure
-            
+
         except Exception as e:
-            print(f"❌ Error en estructuración de datos: {e}")
+            print(f"❌ Error in data structuring: {e}")
             return self._create_fallback_structure(conversation)
-    
+
     def _extract_basic_information(self, conversation: Dict[str, Any]) -> Dict[str, Any]:
-        """Extrae información básica de la conversación"""
         return {
             "conversation_id": conversation.get("conversation_id", "unknown"),
-            "created_at": conversation.get("created_at", datetime.now()).isoformat() if hasattr(conversation.get("created_at", datetime.now()), 'isoformat') else str(conversation.get("created_at", datetime.now())),
+            "created_at": (
+                conversation.get("created_at", datetime.now()).isoformat()
+                if hasattr(conversation.get("created_at", datetime.now()), 'isoformat')
+                else str(conversation.get("created_at", datetime.now()))
+            ),
             "state": conversation.get("state", "unknown"),
             "consent_given": conversation.get("consent_given", False),
             "questions_asked": conversation.get("questions_asked", 0),
             "specific_questions_asked": conversation.get("specific_questions_asked", 0)
         }
-    
+
     def _extract_user_messages(self, conversation: Dict[str, Any]) -> List[str]:
-        """Extrae solo los mensajes del usuario de la conversación"""
         user_messages = []
-        messages = conversation.get("messages", [])
-        
-        for message in messages:
+        for message in conversation.get("messages", []):
             if isinstance(message, dict):
                 role = message.get("role")
                 content = message.get("content", "")
             else:
-                # Si es un objeto MessageModel
                 role = getattr(message, 'role', None)
                 content = getattr(message, 'content', "")
-            
             if role == MessageRole.USER or role == "user":
                 user_messages.append(content.strip())
-        
         return user_messages
-    
+
     async def _extract_structured_fields(
-        self, 
-        user_messages: List[str], 
+        self,
+        user_messages: List[str],
         symptoms_collected: List[str],
         specific_answers: List[Dict]
     ) -> Dict[str, Any]:
-        """
-        Extrae campos estructurados usando normalización semántica avanzada
-        """
-        # Combinar toda la información del usuario
         all_text = " ".join(user_messages + symptoms_collected)
         if specific_answers:
             specific_text = " ".join([
-                answer.get("answer", "") if isinstance(answer, dict) else str(answer) 
+                answer.get("answer", "") if isinstance(answer, dict) else str(answer)
                 for answer in specific_answers
             ])
             all_text += " " + specific_text
-        
-        # Usar LLM para extracción estructurada
+
         structured_fields = self._llm_extract_structured_data(all_text, user_messages)
-        
-        # Normalizar semánticamente los campos extraídos
         normalized_fields = await self.semantic_normalizer.normalize_medical_data(structured_fields)
-        
         return normalized_fields
-    
+
     def _llm_extract_structured_data(self, text: str, user_messages: List[str]) -> Dict[str, Any]:
-        """Usa LLM para extraer datos estructurados del texto médico"""
-        
-        extraction_prompt = f"""You are a medical informatics specialist. Extract structured information from this medical conversation.
+        """Use LLM to extract structured data. Falls back to regex extraction on failure."""
+        consent_words = {
+            "i agree", "yes", "ok", "okay", "agree", "si", "sí", "acepto",
+            "i do", "proceed", "continue", "sí acepto", "si acepto"
+        }
+        substantive = [m for m in user_messages if m.strip().lower() not in consent_words and len(m.strip()) > 3]
 
-CONVERSATION TEXT:
-{text}
+        question_labels = [
+            "Q1 (Main symptom / reason for consultation)",
+            "Q2 (When symptoms started / Duration)",
+            "Q3 (Symptom intensity on scale 1-10)",
+            "Q4 (Aggravating and relieving factors)",
+            "Q5 (Other / associated symptoms)",
+            "Q6 (Current medications)",
+            "Q7 (Past medical history / similar episodes)",
+        ]
+        qa_context = "PATIENT RESPONSES (interview order):\n"
+        for i, msg in enumerate(substantive[:7]):
+            label = question_labels[i] if i < len(question_labels) else f"Q{i+1}"
+            qa_context += f"{label}: {msg}\n"
 
-INDIVIDUAL PATIENT MESSAGES:
-{json.dumps(user_messages, ensure_ascii=False, indent=2)}
+        prompt = f"""You are a medical informatics specialist. Extract structured information from this medical interview.
 
-INSTRUCTIONS:
-1. Identify the main reason for consultation
-2. Extract the main symptom and its characteristics
-3. Identify any mentioned medical history
-4. Detect relevant habits (smoking, alcohol, etc.)
-5. List additional associated symptoms
-6. Determine symptom duration/onset
+{qa_context}
+FULL TEXT: {text[:2000]}
 
-RESPONSE FORMAT (valid JSON):
+EXTRACTION RULES:
+- Q1 is ALWAYS the main symptom and reason for consultation
+- Q2 is ALWAYS onset/duration (extract time expressions: "3 days", "since yesterday", "for a week")
+- Q3 is ALWAYS intensity (extract numbers 1-10, or descriptive: "severe", "moderate", "mild")
+- Q4 contains aggravating and relieving factors
+- Q5 contains other/associated symptoms
+- Q6 contains current medications (if patient says "no" or "none", set empty list)
+- Q7 contains medical history
+
+CRITICAL: Never return 'unspecified' if information was provided. Extract it directly.
+All text values must be in English. Respond ONLY with valid JSON:
 {{
-    "motivo_consulta": "clear description of the main reason",
+    "motivo_consulta": "exact reason from Q1",
     "enfermedad_actual": {{
-        "sintoma_principal": "most relevant symptom",
-        "inicio": "duration or onset time",
-        "caracteristicas": "description of symptom characteristics"
+        "sintoma_principal": "main symptom from Q1 — specific (e.g. 'headache', NOT 'unspecified')",
+        "inicio": "duration from Q2 — specific (e.g. '3 days', NOT 'unspecified')",
+        "intensidad": "intensity from Q3 — specific (e.g. '7/10', NOT 'unspecified')",
+        "caracteristicas": "any characteristics mentioned"
     }},
-    "antecedentes_personales": ["list of mentioned medical history"],
-    "antecedentes_familiares": ["family history if mentioned"],
-    "habitos": {{
-        "tabaquismo": "yes/no/unknown",
-        "alcohol": "yes/no/occasional/unknown",
-        "otros": "other relevant habits"
-    }},
-    "sintomas_asociados": ["list of additional symptoms"],
-    "intensidad": "intensity level if mentioned (1-10 or descriptive)",
-    "factores_agravantes": ["factors that worsen symptoms"],
-    "factores_aliviantes": ["factors that improve symptoms"]
-}}
-
-Respond ONLY with valid JSON, without additional explanations."""
+    "antecedentes_personales": ["list from Q7"],
+    "antecedentes_familiares": [],
+    "habitos": {{"smoking": "yes/no/unknown", "alcohol": "yes/no/occasional/unknown", "other": ""}},
+    "sintomas_asociados": ["list from Q5"],
+    "intensidad": "same as enfermedad_actual.intensidad",
+    "factores_agravantes": ["worsening factors from Q4"],
+    "factores_aliviantes": ["improving factors from Q4"],
+    "medicamentos_actuales": ["medications from Q6"]
+}}"""
 
         try:
-            # Usar hybrid_agent en lugar de llm_service
             hybrid_llm, provider = create_hybrid_agent()
-            
-            # Crear el mensaje completo
-            full_message = f"{extraction_prompt}\n\nExtract the structured information according to the instructions."
-            
-            # Generar respuesta
-            llm_response_content = hybrid_llm.invoke(full_message).content
-            
-            # Crear estructura de respuesta similar a llm_service
-            llm_response = {
-                "response": llm_response_content,
-                "success": True,
-                "model": provider
-            }
-            
-            # Intentar parsear la respuesta JSON
-            response_text = llm_response.get("response", "{}")
-            
-            # Limpiar la respuesta para extraer solo el JSON
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            llm_response_content = hybrid_llm.invoke(prompt).content
+
+            json_match = re.search(r'\{.*\}', llm_response_content, re.DOTALL)
             if json_match:
-                json_text = json_match.group()
-                structured_data = json.loads(json_text)
-                return structured_data
-            else:
-                raise ValueError("No se encontró JSON válido en la respuesta")
-                
+                return json.loads(json_match.group())
+            raise ValueError("No valid JSON in LLM response")
+
         except json.JSONDecodeError as e:
-            print(f"❌ Error parseando JSON del LLM: {e}")
+            print(f"❌ JSON parse error in structuring: {e}")
             return self._create_basic_extraction(text, user_messages)
         except Exception as e:
-            print(f"❌ Error en extracción LLM: {e}")
+            print(f"❌ LLM structuring error: {e}")
             return self._create_basic_extraction(text, user_messages)
-    
+
     def _create_basic_extraction(self, text: str, user_messages: List[str]) -> Dict[str, Any]:
-        """Extracción básica usando reglas y patrones cuando el LLM falla"""
+        """Enhanced bilingual regex extraction when LLM is unavailable."""
         text_lower = text.lower()
-        
-        # Extracción básica del motivo de consulta (primer mensaje del usuario)
-        motivo_consulta = user_messages[0] if user_messages else "general medical consultation"
-        
-        # Detectar síntoma principal usando palabras clave
+
+        consent_words = {
+            "i agree", "yes", "ok", "okay", "agree", "si", "sí", "acepto",
+            "i do", "proceed", "continue", "sí acepto", "si acepto"
+        }
+        motivo_consulta = "general medical consultation"
+        for msg in user_messages:
+            if msg.strip().lower() not in consent_words and len(msg.strip()) > 3:
+                motivo_consulta = msg[:300]
+                break
+
         sintoma_principal = self._detect_main_symptom(text_lower)
-        
-        # Detectar duración/inicio
         inicio = self._detect_onset(text_lower)
-        
-        # Detectar antecedentes
+        intensidad = self._detect_intensity(text_lower)
         antecedentes = self._detect_medical_history(text_lower)
-        
-        # Detectar hábitos
         habitos = self._detect_habits(text_lower)
-        
-        # Detectar síntomas asociados
         sintomas_asociados = self._detect_associated_symptoms(text_lower)
-        
+        factores_agravantes = self._detect_aggravating_factors(text_lower)
+        factores_aliviantes = self._detect_relieving_factors(text_lower)
+        medicamentos = self._detect_medications(text_lower)
+
         return {
-            "motivo_consulta": motivo_consulta[:200],  # Limitar longitud
+            "motivo_consulta": motivo_consulta,
             "enfermedad_actual": {
                 "sintoma_principal": sintoma_principal,
                 "inicio": inicio,
-                "caracteristicas": "requires more specific information"
+                "intensidad": intensidad,
+                "caracteristicas": "extracted from conversation"
             },
             "antecedentes_personales": antecedentes,
             "antecedentes_familiares": [],
             "habitos": habitos,
             "sintomas_asociados": sintomas_asociados,
-            "intensidad": "unspecified",
-            "factores_agravantes": [],
-            "factores_aliviantes": []
+            "intensidad": intensidad,
+            "factores_agravantes": factores_agravantes,
+            "factores_aliviantes": factores_aliviantes,
+            "medicamentos_actuales": medicamentos
         }
-    
+
     def _detect_main_symptom(self, text: str) -> str:
-        """Detecta el síntoma principal usando patrones"""
-        symptom_patterns = {
-            "dolor de cabeza": ["dolor de cabeza", "cefalea", "jaqueca", "migraña"],
-            "dolor torácico": ["dolor en el pecho", "dolor torácico", "dolor pecho"],
-            "tos": ["tos", "toser"],
-            "fiebre": ["fiebre", "temperatura", "calentura"],
-            "dolor abdominal": ["dolor de estómago", "dolor abdominal", "dolor barriga"],
-            "mareo": ["mareo", "mareado", "vértigo"],
-            "dolor muscular": ["dolor muscular", "dolor músculo"],
-            "dificultad respiratoria": ["falta de aire", "dificultad respirar", "ahogo"]
+        """Detect main symptom using bilingual keyword patterns."""
+        patterns = {
+            "headache": [
+                "headache", "head pain", "head hurts", "head aches", "my head hurts",
+                "dolor de cabeza", "cefalea", "jaqueca", "migraña", "migraine"
+            ],
+            "chest pain": [
+                "chest pain", "chest hurts", "chest tightness", "tightness in chest",
+                "dolor en el pecho", "dolor torácico", "dolor pecho"
+            ],
+            "cough": ["cough", "coughing", "dry cough", "tos", "toser"],
+            "fever": ["fever", "high temperature", "feverish", "fiebre", "temperatura", "calentura"],
+            "abdominal pain": [
+                "stomach pain", "abdominal pain", "belly pain", "stomach hurts", "stomach ache",
+                "dolor de estómago", "dolor abdominal", "dolor de barriga", "dolor de panza"
+            ],
+            "back pain": [
+                "back pain", "lower back", "upper back", "backache", "back hurts",
+                "dolor de espalda", "dolor lumbar", "dolor de espalda"
+            ],
+            "dizziness": ["dizziness", "dizzy", "lightheaded", "vertigo", "mareo", "mareado", "vértigo"],
+            "fatigue": [
+                "fatigue", "tired", "exhausted", "weakness", "extreme tiredness",
+                "cansancio", "cansado", "debilidad", "fatiga", "agotamiento"
+            ],
+            "nausea": ["nausea", "nauseous", "feel sick", "queasy", "náuseas", "náusea"],
+            "shortness of breath": [
+                "shortness of breath", "difficulty breathing", "breathless", "can't breathe",
+                "falta de aire", "dificultad para respirar", "disnea", "ahogo"
+            ],
+            "sore throat": [
+                "sore throat", "throat pain", "swollen throat", "throat hurts",
+                "dolor de garganta", "garganta inflamada"
+            ],
+            "joint pain": [
+                "joint pain", "arthritis pain", "knee pain", "hip pain", "joint ache",
+                "dolor articular", "dolor de articulaciones", "articulaciones"
+            ],
+            "muscle pain": [
+                "muscle pain", "muscle ache", "muscle soreness", "myalgia",
+                "dolor muscular", "músculos adoloridos", "contractura"
+            ],
+            "skin rash": [
+                "rash", "skin rash", "hives", "itchy skin", "skin eruption",
+                "erupción", "sarpullido", "picazón", "urticaria"
+            ],
+            "anxiety": ["anxiety", "panic attack", "anxious", "panic", "ansiedad", "pánico"],
+            "depression": ["depression", "depressed", "low mood", "depresión", "deprimido"],
+            "eye pain": ["eye pain", "eye hurts", "blurred vision", "dolor de ojo", "dolor ocular"],
+            "ear pain": ["ear pain", "earache", "ear hurts", "dolor de oído", "oído"],
+            "palpitations": ["palpitations", "heart racing", "heart pounding", "palpitaciones"],
         }
-        
-        for symptom, patterns in symptom_patterns.items():
-            if any(pattern in text for pattern in patterns):
-                return symptom
-        
-        return "unspecified symptom"
-    
+
+        for symptom_name, keywords in patterns.items():
+            if any(kw in text for kw in keywords):
+                return symptom_name
+
+        return "symptom requiring evaluation"
+
     def _detect_onset(self, text: str) -> str:
-        """Detecta el inicio/duración de los síntomas"""
-        time_patterns = [
-            (r"hace (\d+) día[s]?", r"\1 día(s)"),
-            (r"hace (\d+) semana[s]?", r"\1 semana(s)"),
-            (r"hace (\d+) mes[es]?", r"\1 mes(es)"),
-            (r"desde ayer", "1 día"),
-            (r"desde hoy", "horas"),
-            (r"esta mañana", "horas"),
-            (r"anoche", "1 día")
+        """Detect symptom onset/duration — bilingual regex."""
+        patterns = [
+            # English — with capturing groups
+            (r'(\d+)\s*days?\s*ago',       lambda m: f"{m.group(1)} day(s)"),
+            (r'(\d+)\s*weeks?\s*ago',      lambda m: f"{m.group(1)} week(s)"),
+            (r'(\d+)\s*months?\s*ago',     lambda m: f"{m.group(1)} month(s)"),
+            (r'(\d+)\s*hours?\s*ago',      lambda m: f"{m.group(1)} hour(s)"),
+            (r'for\s+(\d+)\s*days?',       lambda m: f"{m.group(1)} day(s)"),
+            (r'for\s+(\d+)\s*weeks?',      lambda m: f"{m.group(1)} week(s)"),
+            (r'for\s+(\d+)\s*months?',     lambda m: f"{m.group(1)} month(s)"),
+            (r'for\s+(\d+)\s*hours?',      lambda m: f"{m.group(1)} hour(s)"),
+            (r'past\s+(\d+)\s*days?',      lambda m: f"{m.group(1)} day(s)"),
+            (r'past\s+(\d+)\s*weeks?',     lambda m: f"{m.group(1)} week(s)"),
+            (r'last\s+(\d+)\s*days?',      lambda m: f"{m.group(1)} day(s)"),
+            (r'last\s+(\d+)\s*weeks?',     lambda m: f"{m.group(1)} week(s)"),
+            # English — fixed phrases
+            (r'since\s+yesterday',         lambda m: "approximately 1 day"),
+            (r'since\s+this\s+morning',    lambda m: "a few hours"),
+            (r'since\s+last\s+night',      lambda m: "approximately 1 day"),
+            (r'since\s+last\s+week',       lambda m: "approximately 1 week"),
+            (r'started\s+today',           lambda m: "less than 1 day"),
+            (r'this\s+morning',            lambda m: "a few hours"),
+            (r'for\s+a\s+few\s+hours?',    lambda m: "a few hours"),
+            (r'for\s+a\s+few\s+days?',     lambda m: "a few days"),
+            (r'for\s+a\s+few\s+weeks?',    lambda m: "a few weeks"),
+            (r'for\s+about\s+a\s+week',    lambda m: "approximately 1 week"),
+            (r'for\s+about\s+a\s+month',   lambda m: "approximately 1 month"),
+            # Spanish — with capturing groups
+            (r'hace\s+(\d+)\s*días?',      lambda m: f"{m.group(1)} day(s)"),
+            (r'hace\s+(\d+)\s*semanas?',   lambda m: f"{m.group(1)} week(s)"),
+            (r'hace\s+(\d+)\s*mes(?:es)?', lambda m: f"{m.group(1)} month(s)"),
+            (r'hace\s+(\d+)\s*horas?',     lambda m: f"{m.group(1)} hour(s)"),
+            # Spanish — fixed phrases
+            (r'desde\s+ayer',              lambda m: "approximately 1 day"),
+            (r'desde\s+hoy',               lambda m: "less than 1 day"),
+            (r'esta\s+mañana',             lambda m: "a few hours"),
+            (r'anoche',                    lambda m: "approximately 1 day"),
+            (r'hace\s+una\s+semana',       lambda m: "approximately 1 week"),
+            (r'hace\s+un\s+mes',           lambda m: "approximately 1 month"),
         ]
-        
-        for pattern, replacement in time_patterns:
-            match = re.search(pattern, text)
-            if match:
-                return re.sub(pattern, replacement, match.group())
-        
-        return "unspecified"
-    
-    def _detect_medical_history(self, text: str) -> List[str]:
-        """Detecta antecedentes médicos mencionados"""
-        conditions = []
-        medical_terms = [
-            "hipertensión", "diabetes", "asma", "alergias", "artritis",
-            "depresión", "ansiedad", "migraña", "gastritis", "colesterol"
+
+        for pattern, formatter in patterns:
+            m = re.search(pattern, text)
+            if m:
+                return formatter(m)
+
+        return "not specified"
+
+    def _detect_intensity(self, text: str) -> str:
+        """Detect symptom intensity — numeric scale or descriptive."""
+        numeric_patterns = [
+            r'(\d{1,2})\s*(?:/|out\s+of)\s*10',
+            r'(\d{1,2})\s*on\s*(?:a\s*)?(?:scale|pain\s*scale)',
+            r'intensity\s*(?:of\s*)?[:\-]?\s*(\d{1,2})',
+            r'pain\s*(?:level|score|rating)\s*(?:of\s*)?[:\-]?\s*(\d{1,2})',
+            r"(?:i'?d?\s*)?(?:say|rate|give)\s*(?:it\s*)?(?:a\s*)?(\d{1,2})\b",
         ]
-        
-        for term in medical_terms:
-            if term in text:
-                conditions.append(term)
-        
-        return conditions
-    
-    def _detect_habits(self, text: str) -> Dict[str, str]:
-        """Detecta hábitos mencionados"""
-        habits = {
-            "tabaquismo": "unknown",
-            "alcohol": "unknown",
-            "otros": ""
+        for pattern in numeric_patterns:
+            m = re.search(pattern, text)
+            if m:
+                score = int(m.group(1))
+                if 1 <= score <= 10:
+                    return f"{score}/10"
+
+        if any(w in text for w in ['unbearable', 'excruciating', 'worst', 'terrible', 'horrible', 'agonizing']):
+            return "10/10 (unbearable)"
+        if any(w in text for w in ['severe', 'very strong', 'very bad', 'very intense', 'really bad']):
+            return "severe"
+        if any(w in text for w in ['strong', 'intense', 'significant', 'quite bad', 'pretty bad']):
+            return "moderate-severe"
+        if any(w in text for w in ['moderate', 'medium', 'fairly', 'noticeable']):
+            return "moderate"
+        if any(w in text for w in ['mild', 'slight', 'minor', 'light', 'a little', 'a bit', 'not too bad']):
+            return "mild"
+        # Spanish descriptive
+        if any(w in text for w in ['insoportable', 'muy fuerte', 'muy intenso', 'grave', 'severo']):
+            return "severe"
+        if any(w in text for w in ['intenso', 'fuerte', 'bastante', 'considerable']):
+            return "moderate-severe"
+        if any(w in text for w in ['moderado', 'regular']):
+            return "moderate"
+        if any(w in text for w in ['leve', 'ligero', 'poco', 'suave', 'no mucho']):
+            return "mild"
+
+        return "not specified"
+
+    def _detect_medications(self, text: str) -> List[str]:
+        """Detect medications mentioned in text."""
+        no_med_phrases = [
+            'no medication', 'not taking', 'no medicine', "don't take", "not on any",
+            'no meds', 'none currently', 'nothing currently', 'no drugs',
+            'no tomo', 'no medicamento', 'no estoy tomando', 'ninguno', 'nada'
+        ]
+        if any(phrase in text for phrase in no_med_phrases):
+            return []
+
+        common_meds = [
+            'ibuprofen', 'aspirin', 'acetaminophen', 'tylenol', 'advil', 'motrin',
+            'paracetamol', 'naproxen', 'amoxicillin', 'antibiotic', 'antibiotics',
+            'metformin', 'lisinopril', 'atorvastatin', 'omeprazole', 'losartan',
+            'metoprolol', 'albuterol', 'inhaler', 'insulin', 'prednisone',
+            'sertraline', 'fluoxetine', 'alprazolam', 'diazepam',
+            'cetirizine', 'loratadine', 'pantoprazole',
+            # Spanish
+            'ibuprofeno', 'aspirina', 'amoxicilina', 'antibiótico', 'metformina',
+            'omeprazol', 'insulina', 'inhalador', 'sertralina', 'diclofenaco',
+        ]
+
+        found = []
+        for med in common_meds:
+            if med in text and med.title() not in found:
+                found.append(med.title())
+        return found
+
+    def _detect_aggravating_factors(self, text: str) -> List[str]:
+        """Detect factors that worsen symptoms."""
+        cues = [
+            'worse', 'worsens', 'worsened', 'aggravated', 'aggravates',
+            'triggers', 'triggered', 'makes it worse', 'increases', 'brings on',
+            'empeora', 'agrava', 'aumenta', 'provoca'
+        ]
+        factor_map = {
+            "physical activity": ['exercise', 'walking', 'movement', 'activity', 'exertion', 'running', 'physical'],
+            "light exposure": ['light', 'bright', 'sunlight', 'screen', 'brightness', 'luz'],
+            "stress": ['stress', 'anxiety', 'worry', 'tension', 'estrés'],
+            "food or drink": ['eating', 'food', 'spicy', 'fatty', 'alcohol', 'coffee', 'caffeine', 'comida'],
+            "lying down": ['lying down', 'lying flat', 'acostado'],
+            "noise": ['noise', 'loud', 'sound', 'ruido'],
+            "morning": ['morning', 'waking up', 'mañana'],
         }
-        
-        # Tabaquismo
-        if any(word in text for word in ["no fumo", "no fumar"]):
-            habits["tabaquismo"] = "no"
-        elif any(word in text for word in ["fumo", "cigarrillo", "tabaco"]):
-            habits["tabaquismo"] = "yes"
-        
-        # Alcohol
-        if any(word in text for word in ["no bebo", "no alcohol"]):
+
+        if not any(cue in text for cue in cues):
+            return []
+
+        found = []
+        for factor_name, keywords in factor_map.items():
+            if any(kw in text for kw in keywords):
+                found.append(factor_name)
+        return found[:3]
+
+    def _detect_relieving_factors(self, text: str) -> List[str]:
+        """Detect factors that improve symptoms."""
+        cues = [
+            'better', 'improves', 'improved', 'relieves', 'helps',
+            'reduces', 'eases', 'makes it better', 'go away',
+            'mejora', 'alivia', 'reduce', 'ayuda'
+        ]
+        factor_map = {
+            "rest": ['rest', 'resting', 'sleep', 'lying down', 'relaxation', 'descanso'],
+            "medication": ['medication helps', 'pain reliever', 'ibuprofen', 'aspirin', 'paracetamol'],
+            "cold compress": ['cold', 'ice', 'cold compress', 'frío', 'hielo'],
+            "heat": ['heat', 'warm', 'hot shower', 'heating', 'calor'],
+            "darkness": ['dark', 'dim', 'darkness', 'oscuridad'],
+            "eating": ['eating', 'food', 'after eating', 'comer'],
+        }
+
+        if not any(cue in text for cue in cues):
+            return []
+
+        found = []
+        for factor_name, keywords in factor_map.items():
+            if any(kw in text for kw in keywords):
+                found.append(factor_name)
+        return found[:3]
+
+    def _detect_medical_history(self, text: str) -> List[str]:
+        """Detect medical history — bilingual."""
+        condition_map = {
+            "hypertension": ["hypertension", "high blood pressure", "hipertensión", "presión alta"],
+            "diabetes": ["diabetes", "diabetic", "diabético", "blood sugar"],
+            "asthma": ["asthma", "asthmatic", "asma"],
+            "allergies": ["allergy", "allergies", "allergic", "alergia", "alergias"],
+            "arthritis": ["arthritis", "rheumatoid", "artritis", "reuma"],
+            "depression": ["depression", "depressed", "antidepressant", "depresión"],
+            "anxiety disorder": ["anxiety disorder", "anxiety diagnosis", "trastorno de ansiedad"],
+            "migraine": ["migraine history", "migraines", "antecedente de migraña", "historia de migraña"],
+            "gastritis": ["gastritis", "ulcer", "acid reflux", "gerd", "acidez"],
+            "high cholesterol": ["cholesterol", "high cholesterol", "colesterol"],
+            "heart disease": ["heart disease", "cardiac", "heart attack", "coronary", "enfermedad cardíaca"],
+            "thyroid disorder": ["thyroid", "hypothyroid", "hyperthyroid", "tiroides"],
+        }
+
+        found = []
+        for condition_name, keywords in condition_map.items():
+            if any(kw in text for kw in keywords):
+                found.append(condition_name)
+        return found[:5]
+
+    def _detect_habits(self, text: str) -> Dict[str, str]:
+        """Detect habits — bilingual."""
+        habits = {"smoking": "unknown", "alcohol": "unknown", "other": ""}
+
+        if any(w in text for w in ["don't smoke", "non-smoker", "never smoked", "no smoke", "not a smoker",
+                                    "no fumo", "no fumar", "no soy fumador"]):
+            habits["smoking"] = "no"
+        elif any(w in text for w in ["smoke", "smoker", "cigarette", "tobacco", "vaping",
+                                      "fumo", "fumador", "cigarrillo", "tabaco"]):
+            habits["smoking"] = "yes"
+
+        if any(w in text for w in ["don't drink", "no alcohol", "non-drinker", "teetotal", "i don't drink",
+                                    "no bebo", "no alcohol", "no tomo alcohol"]):
             habits["alcohol"] = "no"
-        elif any(word in text for word in ["bebo", "alcohol", "copa", "cerveza"]):
-            habits["alcohol"] = "yes"
-        elif "socialmente" in text or "ocasional" in text:
+        elif any(w in text for w in ["occasionally", "socially", "social drinker", "sometimes drink",
+                                      "ocasionalmente", "socialmente", "a veces"]):
             habits["alcohol"] = "occasional"
-        
+        elif any(w in text for w in ["drink", "beer", "wine", "liquor", "spirits", "alcohol",
+                                      "bebo", "cerveza", "vino", "copa"]):
+            habits["alcohol"] = "yes"
+
         return habits
-    
+
     def _detect_associated_symptoms(self, text: str) -> List[str]:
-        """Detecta síntomas asociados mencionados"""
-        associated = []
-        symptom_keywords = [
-            "náuseas", "vómito", "mareo", "fatiga", "cansancio",
-            "sudoración", "palpitaciones", "diarrea", "estreñimiento"
-        ]
-        
-        for symptom in symptom_keywords:
-            if symptom in text:
-                associated.append(symptom)
-        
-        return associated
-    
+        """Detect associated symptoms — bilingual."""
+        symptom_map = {
+            "nausea": ["nausea", "nauseous", "feel sick", "queasy", "náuseas"],
+            "vomiting": ["vomit", "vomiting", "threw up", "vómito"],
+            "dizziness": ["dizzy", "dizziness", "lightheaded", "mareo"],
+            "fatigue": ["fatigue", "tired", "exhausted", "weakness", "cansancio"],
+            "fever": ["fever", "feverish", "high temperature", "fiebre"],
+            "chills": ["chills", "shivering", "escalofríos"],
+            "photophobia": ["light sensitivity", "photophobia", "sensitive to light", "bright lights hurt", "sensibilidad a la luz"],
+            "phonophobia": ["sound sensitivity", "phonophobia", "noise bothers", "sensibilidad al ruido"],
+            "visual changes": ["blurred vision", "visual aura", "see spots", "double vision", "visión borrosa"],
+            "neck stiffness": ["neck stiffness", "stiff neck", "rigidez cervical"],
+            "loss of appetite": ["no appetite", "loss of appetite", "not hungry", "pérdida de apetito"],
+            "shortness of breath": ["shortness of breath", "difficulty breathing", "falta de aire"],
+            "palpitations": ["palpitations", "heart racing", "heart pounding", "palpitaciones"],
+            "sweating": ["sweating", "night sweats", "sudoración"],
+            "nasal congestion": ["congestion", "runny nose", "stuffy nose", "congestión", "moqueo"],
+        }
+
+        found = []
+        for symptom_name, keywords in symptom_map.items():
+            if any(kw in text for kw in keywords):
+                found.append(symptom_name)
+        return found[:6]
+
     def _validate_structure(self, structure: Dict[str, Any]) -> bool:
-        """Valida que la estructura tenga los campos mínimos requeridos"""
-        required_fields = [
-            "motivo_consulta",
-            "enfermedad_actual",
-            "antecedentes_personales",
-            "habitos",
-            "sintomas_asociados"
-        ]
-        
+        required_fields = ["motivo_consulta", "enfermedad_actual", "antecedentes_personales", "habitos", "sintomas_asociados"]
         for field in required_fields:
             if field not in structure:
-                raise ValueError(f"Campo requerido faltante: {field}")
-        
-        # Validar estructura de enfermedad_actual
+                raise ValueError(f"Required field missing: {field}")
         if not isinstance(structure["enfermedad_actual"], dict):
-            raise ValueError("enfermedad_actual debe ser un diccionario")
-        
-        required_subfields = ["sintoma_principal", "inicio", "caracteristicas"]
-        for subfield in required_subfields:
+            raise ValueError("enfermedad_actual must be a dictionary")
+        for subfield in ["sintoma_principal", "inicio", "caracteristicas"]:
             if subfield not in structure["enfermedad_actual"]:
-                raise ValueError(f"Subcampo requerido faltante en enfermedad_actual: {subfield}")
-        
+                raise ValueError(f"Required subfield missing in enfermedad_actual: {subfield}")
         return True
-    
+
     def _create_fallback_structure(self, conversation: Dict[str, Any]) -> Dict[str, Any]:
-        """Crea estructura de fallback cuando falla el procesamiento principal"""
         user_messages = self._extract_user_messages(conversation)
-        first_message = user_messages[0] if user_messages else "medical consultation"
-        
+        consent_words = {"i agree", "yes", "ok", "okay", "agree", "si", "sí", "acepto", "i do"}
+        first_message = "medical consultation"
+        for msg in user_messages:
+            if msg.strip().lower() not in consent_words and len(msg.strip()) > 3:
+                first_message = msg[:200]
+                break
         return {
             "motivo_consulta": first_message,
             "enfermedad_actual": {
                 "sintoma_principal": "requires additional analysis",
-                "inicio": "unspecified",
+                "inicio": "not specified",
+                "intensidad": "not specified",
                 "caracteristicas": "insufficient information"
             },
             "antecedentes_personales": [],
             "antecedentes_familiares": [],
-            "habitos": {
-                "tabaquismo": "unknown",
-                "alcohol": "unknown",
-                "otros": ""
-            },
+            "habitos": {"smoking": "unknown", "alcohol": "unknown", "other": ""},
             "sintomas_asociados": [],
+            "intensidad": "not specified",
+            "factores_agravantes": [],
+            "factores_aliviantes": [],
+            "medicamentos_actuales": [],
             "metadata": {
                 "format_version": self.standard_format_version,
                 "structured_timestamp": datetime.now().isoformat(),
@@ -382,87 +549,69 @@ Respond ONLY with valid JSON, without additional explanations."""
 
 
 class SemanticNormalizer:
-    """Módulo de normalización semántica para términos médicos"""
-    
+    """Semantic normalization for medical terms — English output."""
+
     def __init__(self):
-        self.medical_synonyms = self._load_medical_synonyms()
-        self.severity_mapping = self._load_severity_mapping()
-    
+        self.symptom_normalization = self._load_symptom_normalization()
+        self.condition_normalization = self._load_condition_normalization()
+
     async def normalize_medical_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Normaliza términos médicos en los datos estructurados"""
-        normalized_data = data.copy()
-        
-        # Normalizar síntoma principal
-        if "enfermedad_actual" in normalized_data:
-            symptom = normalized_data["enfermedad_actual"].get("sintoma_principal", "")
-            normalized_data["enfermedad_actual"]["sintoma_principal"] = self._normalize_symptom(symptom)
-        
-        # Normalizar antecedentes
-        if "antecedentes_personales" in normalized_data:
-            normalized_data["antecedentes_personales"] = [
-                self._normalize_condition(condition) 
-                for condition in normalized_data["antecedentes_personales"]
+        normalized = data.copy()
+
+        if "enfermedad_actual" in normalized:
+            symptom = normalized["enfermedad_actual"].get("sintoma_principal", "")
+            normalized["enfermedad_actual"]["sintoma_principal"] = self._normalize_symptom(symptom)
+
+        if "antecedentes_personales" in normalized:
+            normalized["antecedentes_personales"] = [
+                self._normalize_condition(c) for c in normalized["antecedentes_personales"]
             ]
-        
-        # Normalizar síntomas asociados
-        if "sintomas_asociados" in normalized_data:
-            normalized_data["sintomas_asociados"] = [
-                self._normalize_symptom(symptom) 
-                for symptom in normalized_data["sintomas_asociados"]
+
+        if "sintomas_asociados" in normalized:
+            normalized["sintomas_asociados"] = [
+                self._normalize_symptom(s) for s in normalized["sintomas_asociados"]
             ]
-        
-        return normalized_data
-    
+
+        return normalized
+
     def _normalize_symptom(self, symptom: str) -> str:
-        """Normaliza un síntoma individual"""
         symptom_lower = symptom.lower().strip()
-        
-        for standard_term, synonyms in self.medical_synonyms.items():
-            if any(synonym in symptom_lower for synonym in synonyms):
+        for standard_term, variants in self.symptom_normalization.items():
+            if any(v in symptom_lower for v in variants):
                 return standard_term
-        
-        return symptom  # Retorna original si no encuentra normalización
-    
+        return symptom
+
     def _normalize_condition(self, condition: str) -> str:
-        """Normaliza una condición médica"""
         condition_lower = condition.lower().strip()
-        
-        condition_mapping = {
-            "hipertensión arterial": ["hipertension", "presion alta", "tension alta"],
-            "diabetes mellitus": ["diabetes", "azucar alta"],
-            "asma bronquial": ["asma"],
-            "gastritis": ["gastritis", "acidez"],
-            "migraña": ["migraña", "jaqueca"]
-        }
-        
-        for standard_condition, variants in condition_mapping.items():
-            if any(variant in condition_lower for variant in variants):
-                return standard_condition
-        
+        for standard_term, variants in self.condition_normalization.items():
+            if any(v in condition_lower for v in variants):
+                return standard_term
         return condition
-    
-    def _load_medical_synonyms(self) -> Dict[str, List[str]]:
-        """Carga diccionario de sinónimos médicos"""
+
+    def _load_symptom_normalization(self) -> Dict[str, List[str]]:
         return {
-            "cefalea": ["dolor de cabeza", "jaqueca", "migraña", "dolor cabeza"],
-            "dolor torácico": ["dolor pecho", "dolor en el pecho", "dolor toracico"],
-            "disnea": ["falta de aire", "dificultad respirar", "ahogo"],
-            "náuseas": ["nausea", "ganas de vomitar", "asco"],
-            "vértigo": ["mareo", "mareado", "vertigo"],
-            "astenia": ["cansancio", "fatiga", "debilidad"],
-            "palpitaciones": ["taquicardia", "corazon rapido", "latidos fuertes"],
-            "pirexia": ["fiebre", "temperatura", "calentura"]
+            "headache": ["dolor de cabeza", "cefalea", "jaqueca", "head pain", "head ache"],
+            "chest pain": ["dolor pecho", "dolor en el pecho", "dolor torácico"],
+            "shortness of breath": ["falta de aire", "dificultad respirar", "disnea"],
+            "nausea": ["náuseas", "nausea", "ganas de vomitar"],
+            "dizziness": ["mareo", "mareado", "vertigo", "vértigo"],
+            "fatigue": ["cansancio", "fatiga", "debilidad", "astenia"],
+            "palpitations": ["palpitaciones", "taquicardia", "latidos fuertes"],
+            "fever": ["fiebre", "temperatura alta", "calentura", "pirexia"],
+            "migraine": ["migraña", "jaqueca"],
         }
-    
-    def _load_severity_mapping(self) -> Dict[str, str]:
-        """Mapeo de términos de severidad"""
+
+    def _load_condition_normalization(self) -> Dict[str, List[str]]:
         return {
-            "leve": ["leve", "ligero", "poco", "suave"],
-            "moderado": ["moderado", "medio", "regular"],
-            "severo": ["severo", "fuerte", "intenso", "grave"],
-            "muy severo": ["muy fuerte", "insoportable", "extremo"]
+            "hypertension": ["hipertensión", "presión alta", "tensión alta", "high blood pressure"],
+            "diabetes mellitus": ["diabetes", "azúcar alta"],
+            "asthma": ["asma"],
+            "gastritis": ["gastritis", "acidez", "acid reflux"],
+            "migraine": ["migraña", "jaqueca"],
+            "depression": ["depresión", "deprimido"],
+            "anxiety disorder": ["ansiedad", "trastorno de ansiedad"],
         }
 
 
-# Instancia global del servicio
+# Global service instance
 data_structuring_service = MedicalDataStructuringService()

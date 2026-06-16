@@ -52,14 +52,8 @@ async def chat_with_agent(request: ChatRequest):
     
     conversation = CONVERSATIONS[conversation_id]
     user_message = request.message.lower().strip()
-    
-    # 🔧 Limpiar conversaciones con configuración anterior (una sola vez al servidor iniciar)
-    if conversation.get("min_questions", 3) == 3:
-        print(f"🔧 Clearing old conversations and resetting")
-        CONVERSATIONS.clear()
-        raise HTTPException(status_code=404, detail="Conversation reset - please start a new one")
-    
-    # Debug: Imprimir estado de la conversación
+
+    # Debug: print conversation state
     print(f"🔍 DEBUG: Conversation state: {conversation['state']}")
     print(f"🔍 DEBUG: User message: '{request.message}'")
     print(f"🔍 DEBUG: User message lower: '{user_message}'")
@@ -469,16 +463,15 @@ def format_hypotheses_display(hypotheses: List[str]) -> str:
 
 
 async def handle_specific_questions_fallback(conversation_id: str, message: str) -> ChatResponse:
-    """Función de respaldo si el agente de CrewAI falla"""
+    """Fallback handler when the LLM agent cannot generate specific questions."""
     conversation = CONVERSATIONS[conversation_id]
-    
-    # Usar lógica simple de respaldo
+
     fallback_hypotheses = [
         "Possible inflammatory condition based on reported symptoms",
-        "Syndrome related to lifestyle factors",
+        "Syndrome related to lifestyle or environmental factors",
         "Condition requiring specialized medical evaluation"
     ]
-    
+
     fallback_questions = [
         "Can you describe the intensity of your symptoms on a scale from 1 to 10?",
         "Are the symptoms constant, or do they come and go?",
@@ -486,20 +479,31 @@ async def handle_specific_questions_fallback(conversation_id: str, message: str)
         "Do you have any family history of similar conditions?",
         "Are you currently taking any medications or supplements?"
     ]
-    
+
     conversation["preliminary_hypotheses"] = fallback_hypotheses
     conversation["specific_questions_list"] = fallback_questions
     conversation["specific_questions_max"] = 5
     conversation["specific_questions_asked"] = 1
-    
-    response_text = f"**GENERAL QUESTIONS COMPLETED**\n\nI have completed the general questions. Now I will continue with specific questions:\n\n**Specific question 1/5:**\n{fallback_questions[0]}"
-    
+
+    response_text = (
+        "<strong>GENERAL QUESTIONS COMPLETED</strong>\n\n"
+        "I have reviewed the information from the general interview. "
+        "I will now ask 5 specific questions to refine the analysis.\n\n"
+        f"<strong>Specific question 1/5:</strong>\n{fallback_questions[0]}"
+    )
+
+    conversation["messages"].append({
+        "role": MessageRole.ASSISTANT,
+        "content": response_text,
+        "timestamp": datetime.now()
+    })
+
     return ChatResponse(
         response=response_text,
         conversation_id=conversation_id,
         agent_type="specific_questions_analyst",
         confidence_score=0.8,
-        severity_assessment="MEDIO",
+        severity_assessment="medium",
         suggestions=[],
         follow_up_questions=[]
     )
@@ -517,65 +521,91 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
             # Preparar datos de la entrevista inicial para el agente
             interview_summary = format_interview_data_for_agent(conversation["symptoms_collected"])
             
-            # 🧪 USAR AGENTE HÍBRIDO (NVIDIA/OpenAI)
+            # Topics already answered in the general interview — LLM must not repeat these
+            already_covered = (
+                "1. Main symptom / reason for consultation\n"
+                "2. When symptoms started / Duration of symptoms\n"
+                "3. Symptom intensity on a numeric scale (1-10)\n"
+                "4. Aggravating and relieving factors\n"
+                "5. Other / associated symptoms present\n"
+                "6. Current medications being taken\n"
+                "7. Past medical history and similar previous episodes"
+            )
+
             from app.crew.hybrid_agent import generate_questions_hybrid
-            
-            print(f"🧪 PROBANDO AGENTE HÍBRIDO (NVIDIA/OpenAI)...")
-            hybrid_result = generate_questions_hybrid(interview_summary)
+
+            print(f"🧪 Calling hybrid agent (NVIDIA/OpenAI)...")
+            hybrid_result = generate_questions_hybrid(interview_summary, already_covered)
             
             if hybrid_result["success"]:
-                print(f"✅ AGENTE HÍBRIDO FUNCIONÓ CON {hybrid_result['provider'].upper()}!")
+                print(f"✅ Hybrid agent succeeded ({hybrid_result['provider'].upper()})")
                 analysis_result = hybrid_result["content"]
-                
-                # 🐛 Logging para debugging (puedes eliminar esto luego)
-                print(f"🤖 Resultado del agente {hybrid_result['provider']}:")
+                print(f"🤖 Agent output:")
                 print(f"� {analysis_result[:200]}..." if len(analysis_result) > 200 else analysis_result)
             else:
-                print(f"❌ AGENTE HÍBRIDO FALLÓ, ERROR CRÍTICO...")
-                raise Exception(f"Todos los agentes fallaron: {hybrid_result['error']}")
-            
-            # Parsear el resultado del agente
+                raise Exception(f"All agents failed: {hybrid_result['error']}")
+
+            # Parse hypotheses and questions from agent output
             hypotheses, questions = parse_agent_analysis(analysis_result)
-            
-            # Asegurar que siempre tengamos exactamente 5 preguntas
-            backup_questions = [
-                "Is there any time pattern to your symptoms (do they worsen at certain times of day)?",
-                "Are the symptoms related to specific activities or body positions?",
-                "Have you noticed any factor that consistently improves or worsens your condition?",
-                "Do you have any personal or family medical history relevant to these symptoms?",
-                "How do these symptoms affect your daily life and usual activities?"
+
+            # Dedup: replace questions that repeat already-answered general interview topics
+            REPEAT_TOPIC_KEYWORDS = [
+                ["how long", "since when", "when did it start", "how many days", "how many weeks",
+                 "how many months", "duration", "how long ago", "when did these", "when did the",
+                 "how long have you"],
+                ["scale of 1", "1 to 10", "rate your", "intensity from", "rate the pain",
+                 "how intense", "how severe", "on a scale", "pain level", "severity on"],
+                ["medication", "medicine", "currently taking", "drugs you", "are you taking any",
+                 "any supplements", "any pills", "taking anything for"],
+                ["medical history", "family history", "have you had before", "similar in the past",
+                 "past episodes", "previously had", "prior history", "past medical", "have you ever had"],
+                ["other symptoms", "additional symptoms", "any other symptoms", "else you are feeling"],
             ]
-            
-            # Completar hasta 5 preguntas si es necesario
-            while len(questions) < 5:
-                needed_index = len(questions)
-                if needed_index < len(backup_questions):
-                    questions.append(backup_questions[needed_index])
-                else:
-                    questions.append(f"Can you provide more details about aspect #{needed_index + 1} of your symptoms?")
-            
-            # Tomar solo las primeras 5 preguntas
-            questions = questions[:5]
-            
-            print(f"✅ Usando {len(questions)} preguntas específicas (completadas si era necesario)")
-            
-            # Guardar hipótesis y preguntas en la conversación
+            dedup_backups = [
+                "Where exactly is the symptom located — can you point to a specific area of your body?",
+                "How would you describe the quality of the sensation (sharp, dull, throbbing, burning, pressure-like)?",
+                "Does the symptom spread or radiate to other areas of your body?",
+                "Is there a specific body position or time of day when the symptom consistently changes in intensity?",
+                "Have you noticed a consistent trigger or pattern that reliably precedes the onset of your symptoms?",
+            ]
+            dedup_idx = 0
+            filtered_questions = []
+            for q in questions:
+                q_lower = q.lower()
+                is_repeat = any(any(kw in q_lower for kw in topic_kws) for topic_kws in REPEAT_TOPIC_KEYWORDS)
+                if not is_repeat:
+                    filtered_questions.append(q)
+                elif dedup_idx < len(dedup_backups):
+                    filtered_questions.append(dedup_backups[dedup_idx])
+                    dedup_idx += 1
+            while len(filtered_questions) < 5 and dedup_idx < len(dedup_backups):
+                filtered_questions.append(dedup_backups[dedup_idx])
+                dedup_idx += 1
+            questions = filtered_questions[:5]
+            print(f"✅ Using {len(questions)} specific questions (after dedup filter)")
+
+            # Store in conversation state
             conversation["preliminary_hypotheses"] = hypotheses
             conversation["specific_questions_list"] = questions
-            conversation["specific_questions_max"] = 5  # Siempre 5 preguntas
-            
-            # Tomar la primera pregunta
-            current_question = questions[0] if questions else "Can you describe more details about your symptoms?"
+            conversation["specific_questions_max"] = 5
             conversation["specific_questions_asked"] = 1
-            
-            response_text = f"**GENERAL QUESTIONS COMPLETED**\n\nExcellent, I have completed the general questions and analyzed your initial information.\n\n**PRELIMINARY HYPOTHESES:**\n{format_hypotheses_display(hypotheses)}\n\nNow I will continue with 5 specific questions designed by our specialized agent:\n\n**Specific question 1/5:**\n{current_question}"
-            
+
+            current_question = questions[0] if questions else "Can you describe more details about your symptoms?"
+
+            response_text = (
+                "<strong>GENERAL QUESTIONS COMPLETED</strong>\n\n"
+                "Excellent — I have completed the general interview and analyzed your initial information.\n\n"
+                f"<strong>PRELIMINARY HYPOTHESES:</strong>\n{format_hypotheses_display(hypotheses)}\n\n"
+                "I will now ask 5 targeted questions to refine the clinical picture:\n\n"
+                f"<strong>Specific question 1/5:</strong>\n{current_question}"
+            )
+
             conversation["messages"].append({
                 "role": MessageRole.ASSISTANT,
                 "content": response_text,
                 "timestamp": datetime.now()
             })
-            
+
             return ChatResponse(
                 response=response_text,
                 conversation_id=conversation_id,
@@ -585,10 +615,9 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
                 suggestions=[],
                 follow_up_questions=[]
             )
-            
+
         except Exception as e:
-            print(f"❌ ERROR: CrewAI agent failed: {e}")
-            # Fallback a lógica simple si el agente falla
+            print(f"❌ ERROR: Agent failed: {e}")
             return await handle_specific_questions_fallback(conversation_id, message)
     
     else:
@@ -612,7 +641,7 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
         
         conversation["specific_questions_asked"] += 1
         
-        response_text = f"**Specific question {conversation['specific_questions_asked']}/5:**\n{current_question}"
+        response_text = f"<strong>Specific question {conversation['specific_questions_asked']}/5:</strong>\n{current_question}"
         
         conversation["messages"].append({
             "role": MessageRole.ASSISTANT,
@@ -631,49 +660,138 @@ async def handle_specific_questions(conversation_id: str, message: str) -> ChatR
         )
 
 
+def _build_fallback_diagnosis(conversation: Dict[str, Any]) -> str:
+    """
+    Builds a basic diagnosis summary from collected conversation data when the
+    full classification pipeline is unavailable.  Uses only in-memory data —
+    no external calls.
+    """
+    symptoms_text = " ".join(conversation.get("symptoms_collected", [])).lower()
+    specific_answers = conversation.get("specific_answers", [])
+    specific_text = " ".join(
+        (a.get("answer", "") if isinstance(a, dict) else str(a)) for a in specific_answers
+    ).lower()
+    all_text = f"{symptoms_text} {specific_text}"
+
+    # Infer category from collected text
+    if any(w in all_text for w in ["headache", "head", "migraine", "dizziness", "neurological", "dolor de cabeza", "cefalea"]):
+        category = "Neurological"
+        conditions = [
+            ("Tension headache", "75%", "Headache caused by muscle tension or stress"),
+            ("Migraine", "15%", "Vascular headache with possible light/sound sensitivity"),
+            ("Dehydration headache", "10%", "Headache related to insufficient fluid intake"),
+        ]
+    elif any(w in all_text for w in ["chest", "heart", "palpitation", "cardiovascular", "pecho", "corazon"]):
+        category = "Cardiovascular"
+        conditions = [
+            ("Benign tachycardia", "60%", "Non-pathological increase in heart rate"),
+            ("Anxiety-related cardiac symptoms", "30%", "Cardiac symptoms driven by anxiety"),
+            ("Mild arrhythmia", "10%", "Minor alteration of heart rhythm requiring evaluation"),
+        ]
+    elif any(w in all_text for w in ["cough", "breath", "respiratory", "lung", "tos", "respirar"]):
+        category = "Respiratory"
+        conditions = [
+            ("Upper respiratory infection", "65%", "Infection of the upper respiratory tract"),
+            ("Mild bronchitis", "25%", "Mild inflammation of the bronchi"),
+            ("Respiratory allergy", "10%", "Allergic reaction affecting the airway"),
+        ]
+    elif any(w in all_text for w in ["stomach", "nausea", "vomit", "digestive", "gastro", "estomago"]):
+        category = "Gastrointestinal"
+        conditions = [
+            ("Gastritis", "60%", "Inflammation of the gastric lining"),
+            ("Indigestion", "30%", "Difficulty in the digestive process"),
+            ("Intestinal syndrome", "10%", "Alteration in intestinal function"),
+        ]
+    elif any(w in all_text for w in ["muscle", "joint", "bone", "back", "arthritis", "musculo", "articular"]):
+        category = "Musculoskeletal"
+        conditions = [
+            ("Muscle strain", "65%", "Muscle tension or overuse fatigue"),
+            ("Mild arthritis", "25%", "Mild joint inflammation"),
+            ("Sports or activity injury", "10%", "Injury related to physical exertion"),
+        ]
+    else:
+        category = "General"
+        conditions = [
+            ("Mild viral syndrome", "50%", "Low-intensity viral process"),
+            ("Fatigue or stress-related symptoms", "35%", "Symptoms related to tiredness or tension"),
+            ("General malaise requiring evaluation", "15%", "Non-specific symptoms needing professional assessment"),
+        ]
+
+    lines = [
+        "<strong>MEDICAL ANALYSIS COMPLETED</strong>",
+        "",
+        "<strong>SUMMARY OF COLLECTED INFORMATION:</strong>",
+        f"- <strong>Medical category assessed:</strong> {category}",
+        f"- <strong>General questions answered:</strong> {conversation.get('questions_asked', 0)}",
+        f"- <strong>Specific questions answered:</strong> {len(specific_answers)}",
+        "",
+        "<strong>LOW CONFIDENCE DIFFERENTIAL DIAGNOSIS</strong>",
+        "<em>Based on keyword pattern matching — consult a doctor for accurate diagnosis</em>",
+        "",
+        "<strong>POSSIBLE CONDITIONS (estimated ranges, not definitive probabilities):</strong>",
+        "",
+    ]
+
+    prob_ranges = ["35–55%", "20–35%", "10–20%"]
+    for i, (name, _prob, desc) in enumerate(conditions, 1):
+        display_range = prob_ranges[i - 1] if i <= len(prob_ranges) else "< 10%"
+        lines.append(f"<strong>{i}. {name}</strong> (estimated range: {display_range})")
+        lines.append(f"   - {desc}")
+        lines.append("")
+
+    lines += [
+        "<strong>RECOMMENDATIONS:</strong>",
+        "- Schedule an appointment with a healthcare professional for complete evaluation",
+        "- Monitor symptom evolution and document any changes",
+        "- Seek immediate care if symptoms worsen significantly",
+        "",
+        "<strong>IMPORTANT DISCLAIMER:</strong>",
+        "- This analysis is generated by AI based on information you provided",
+        "- It does NOT constitute a professional medical diagnosis",
+        "- Always consult a certified doctor for definitive diagnosis and treatment",
+    ]
+
+    return "\n".join(lines)
+
+
 async def handle_classification(conversation_id: str, message: str) -> ChatResponse:
     """
-    Maneja la clasificación usando el nuevo servicio de estructuración + Hugging Face
-    Paso 3: Procesar información recolectada y transformarla en representación estructurada
+    Handles classification using data structuring + Hugging Face.
+    Step 3: Process collected information into a structured representation.
     """
     conversation = CONVERSATIONS[conversation_id]
-    
+
+    # CRITICAL: Set terminal state BEFORE any processing to prevent re-entry loops.
+    # If anything below fails the conversation will still advance past this phase.
+    conversation["state"] = ConversationState.CLASSIFICATION_COMPLETE
+
     try:
-        # Importar servicios necesarios
         from app.services.classification_service import classification_model
         from app.services.data_structuring_service import data_structuring_service
-        
-        print(f"🔄 PASO 3: Iniciando estructuración de datos médicos...")
-        
-        # PASO 3.1: Estructurar la información recolectada
-        # Usar el nuevo servicio de estructuración de datos
+
+        print(f"🔄 Starting medical data structuring...")
+
         structured_medical_data = await data_structuring_service.structure_conversation_data(conversation)
-        
-        print(f"✅ Datos estructurados generados:")
-        print(f"   - Motivo consulta: {structured_medical_data.get('motivo_consulta', 'N/A')}")
-        print(f"   - Síntoma principal: {structured_medical_data.get('enfermedad_actual', {}).get('sintoma_principal', 'N/A')}")
-        print(f"   - Antecedentes: {len(structured_medical_data.get('antecedentes_personales', []))} encontrados")
-        print(f"   - Síntomas asociados: {len(structured_medical_data.get('sintomas_asociados', []))} encontrados")
-        
-        # Guardar datos estructurados en la conversación
+
+        print(f"✅ Structured data generated:")
+        print(f"   - Chief complaint: {structured_medical_data.get('motivo_consulta', 'N/A')}")
+        print(f"   - Main symptom: {structured_medical_data.get('enfermedad_actual', {}).get('sintoma_principal', 'N/A')}")
+
         conversation["structured_medical_data"] = structured_medical_data
-        
-        # PASO 3.2: Convertir a formato compatible con el modelo de clasificación
-        # Preparar datos en formato optimizado para clasificación
+
         classification_input = {
             "chief_complaint": structured_medical_data.get("motivo_consulta", "general consultation"),
             "symptoms": [
                 structured_medical_data.get("enfermedad_actual", {}).get("sintoma_principal", "")
             ] + structured_medical_data.get("sintomas_asociados", []),
-            "history": structured_medical_data.get("antecedentes_personales", []) + 
-                     structured_medical_data.get("antecedentes_familiares", []),
+            "history": structured_medical_data.get("antecedentes_personales", []) +
+                       structured_medical_data.get("antecedentes_familiares", []),
             "current_medications": structured_medical_data.get("medicamentos_actuales", []),
             "habits": structured_medical_data.get("habitos", {}),
             "duration": structured_medical_data.get("enfermedad_actual", {}).get("inicio", "unspecified"),
             "severity": structured_medical_data.get("enfermedad_actual", {}).get("intensidad", "unspecified"),
-            "associated_factors": structured_medical_data.get("factores_agravantes", []) + 
-                               structured_medical_data.get("factores_aliviantes", []),
-            # Información adicional para el modelo
+            "associated_factors": structured_medical_data.get("factores_agravantes", []) +
+                                  structured_medical_data.get("factores_aliviantes", []),
             "conversation_metadata": {
                 "questions_answered": conversation.get("questions_asked", 0),
                 "specific_answers_count": len(conversation.get("specific_answers", [])),
@@ -681,19 +799,13 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
                 "processing_method": structured_medical_data.get("metadata", {}).get("processing_method", "unknown")
             }
         }
-        
-        print(f"🔍 Enviando datos estructurados al modelo de clasificación...")
-        
-        # PASO 3.3: Ejecutar clasificación con datos estructurados
+
+        print(f"🔍 Sending structured data to classification model...")
         classification_result = await classification_model.classify(classification_input)
-        
-        print(f"✅ Clasificación completada:")
-        print(f"   - Categoría: {classification_result.get('primary_category', 'N/A')}")
-        print(f"   - Confianza: {classification_result.get('confidence_score', 0.0):.2f}")
-        print(f"   - Método: {classification_result.get('method', 'N/A')}")
-        
-        # PASO 3.4: Guardar resultados completos
-        conversation["state"] = ConversationState.CLASSIFICATION_COMPLETE
+
+        print(f"✅ Classification complete: {classification_result.get('primary_category', 'N/A')} "
+              f"({classification_result.get('confidence_score', 0.0):.2f})")
+
         conversation["classification_result"] = classification_result
         conversation["final_structured_data"] = {
             "structured_medical_data": structured_medical_data,
@@ -701,48 +813,61 @@ async def handle_classification(conversation_id: str, message: str) -> ChatRespo
             "classification_result": classification_result,
             "processing_timestamp": datetime.now().isoformat()
         }
-        
-        # PASO 3.5: Generar respuesta diagnóstica mejorada
+
         response_text = await generate_enhanced_diagnosis_summary(
             structured_medical_data,
             classification_result,
             conversation.get("preliminary_hypotheses", [])
         )
-        
-        # Registrar respuesta
+
         conversation["messages"].append({
             "role": MessageRole.ASSISTANT,
             "content": response_text,
             "timestamp": datetime.now()
         })
-        
+
         return ChatResponse(
             response=response_text,
             conversation_id=conversation_id,
             agent_type="enhanced_medical_classifier",
             confidence_score=classification_result.get("confidence_score", 0.0),
-            severity_assessment=classification_result.get("urgency_level", "MEDIUM"),
+            severity_assessment=classification_result.get("urgency_level", "medium"),
             predicted_condition=classification_result.get("primary_category", "Analysis completed"),
             suggestions=classification_result.get("recommendations", []),
-            follow_up_questions=[],  # Sin preguntas de seguimiento después de clasificación
-            is_diagnosis=True  # Marcar como diagnóstico para mostrar el recuadro especial
+            follow_up_questions=[],
+            is_diagnosis=True
         )
-        
+
     except Exception as e:
-        print(f"❌ ERROR en estructuración y clasificación: {e}")
-        print(f"📄 Datos de conversación que causaron error: {conversation.get('conversation_id', 'unknown')}")
-        # Fallback a respuesta básica
-        return await handle_basic_medical_response(conversation_id, message)
+        print(f"❌ ERROR in classification pipeline: {e}")
+        response_text = _build_fallback_diagnosis(conversation)
+
+        conversation["messages"].append({
+            "role": MessageRole.ASSISTANT,
+            "content": response_text,
+            "timestamp": datetime.now()
+        })
+
+        return ChatResponse(
+            response=response_text,
+            conversation_id=conversation_id,
+            agent_type="fallback_medical_classifier",
+            confidence_score=0.5,
+            severity_assessment="medium",
+            suggestions=["Consult a medical professional for a complete and definitive evaluation"],
+            follow_up_questions=[],
+            is_diagnosis=True
+        )
 
 
 async def handle_post_classification_conversation(conversation_id: str, message: str) -> ChatResponse:
-    """Maneja la conversación después de mostrar la clasificación"""
+    """Handles conversation after the diagnosis has been presented."""
     conversation = CONVERSATIONS[conversation_id]
-    
-    # Generar respuesta contextual basada en la clasificación previa
+
     classification_result = conversation.get("classification_result", {})
-    category = classification_result.get("category", "general")
-    
+    # Use the correct key — classification stores "primary_category", not "category"
+    category = classification_result.get("primary_category", "general")
+
     response_text = generate_contextual_response(message, category, classification_result)
     
     conversation["messages"].append({
@@ -845,8 +970,8 @@ def generate_contextual_response(message: str, category: str, classification_res
         return f"Regarding medications for {category} conditions, it's important that you consult with a doctor before taking any medication. Based on my analysis, general recommendations include monitoring symptoms and professional medical evaluation."
     
     elif any(word in message_lower for word in ['when', 'doctor', 'médico', 'physician', 'appointment', 'consulta']):
-        severity = classification_result.get("severity", "MEDIUM")
-        if severity in ["CRITICAL", "HIGH", "CRÍTICO", "ALTO"]:
+        severity = classification_result.get("urgency_level", "medium")
+        if severity in ["critical", "high", "CRITICAL", "HIGH"]:
             return "Given the nature of your symptoms, I recommend that you see a doctor as soon as possible, preferably today."
         else:
             return "I recommend that you schedule an appointment with your doctor in the next few days for a more detailed evaluation."
@@ -1448,76 +1573,105 @@ async def generate_enhanced_diagnosis_summary(
         classification_result
     )
     
-    # Construir el resumen diagnóstico
-    diagnosis_text = f"**MEDICAL ANALYSIS COMPLETED**\n\n"
-    
-    # Resumen de información estructurada
-    diagnosis_text += f"**SUMMARY OF COLLECTED INFORMATION:**\n"
-    diagnosis_text += f"- **Reason for consultation:** {motivo_consulta}\n"
-    diagnosis_text += f"- **Main symptom:** {sintoma_principal}\n"
-    diagnosis_text += f"- **Duration:** {inicio}\n"
-    
-    if intensidad != "unspecified":
-        diagnosis_text += f"- **Intensity:** {intensidad}\n"
-    
+    # Field inference: if symptom is generic, fall back to motivo_consulta text
+    generic_values = {
+        "symptom requiring evaluation", "unspecified symptom", "unspecified",
+        "requires additional analysis", "not specified", ""
+    }
+    if sintoma_principal.lower() in generic_values and motivo_consulta not in ("medical consultation", "general medical consultation"):
+        sintoma_principal = motivo_consulta[:80]
+    if inicio.lower() in generic_values:
+        inicio = "not specified in interview"
+
+    # Low-confidence handling
+    low_confidence = confidence_score < 0.5
+    if low_confidence:
+        conditions_header = "<strong>LOW CONFIDENCE DIFFERENTIAL DIAGNOSIS</strong>"
+        confidence_display = "Low (below 50%)"
+        prob_ranges = ["30–50%", "15–30%", "< 15%"]
+        confidence_note = (
+            "\n<em>Note: Model confidence is below 50%. "
+            "The following are broad differential possibilities — not ranked probabilities. "
+            "A clinical evaluation is strongly recommended.</em>\n"
+        )
+    else:
+        conditions_header = "<strong>MOST LIKELY CONDITIONS:</strong>"
+        confidence_display = f"{confidence_score*100:.0f}%"
+        prob_ranges = None
+        confidence_note = ""
+
+    # Build diagnosis text
+    diagnosis_text = "<strong>MEDICAL ANALYSIS COMPLETED</strong>\n\n"
+
+    # Summary of collected information
+    diagnosis_text += "<strong>SUMMARY OF COLLECTED INFORMATION:</strong>\n"
+    diagnosis_text += f"- <strong>Reason for consultation:</strong> {motivo_consulta}\n"
+    diagnosis_text += f"- <strong>Main symptom:</strong> {sintoma_principal}\n"
+    diagnosis_text += f"- <strong>Duration:</strong> {inicio}\n"
+
+    if intensidad and intensidad.lower() not in generic_values:
+        diagnosis_text += f"- <strong>Intensity:</strong> {intensidad}\n"
+
     if antecedentes:
-        diagnosis_text += f"- **History:** {', '.join(antecedentes[:3])}\n"
-    
+        diagnosis_text += f"- <strong>Medical history:</strong> {', '.join(antecedentes[:3])}\n"
+
     if sintomas_asociados:
-        diagnosis_text += f"- **Associated symptoms:** {', '.join(sintomas_asociados[:3])}\n"
-    
+        diagnosis_text += f"- <strong>Associated symptoms:</strong> {', '.join(sintomas_asociados[:3])}\n"
+
     diagnosis_text += "\n"
-    
-    # Clasificación y análisis
-    diagnosis_text += f"**MEDICAL CLASSIFICATION:**\n"
-    diagnosis_text += f"- **Category:** {category_display}\n"
-    diagnosis_text += f"- **Analysis confidence:** {confidence_score*100:.0f}%\n"
-    diagnosis_text += f"- **Urgency level:** {urgency_level.upper()}\n\n"
-    
-    # Condiciones más probables
-    diagnosis_text += f"**MOST LIKELY CONDITIONS:**\n\n"
-    
+
+    # Classification
+    diagnosis_text += "<strong>MEDICAL CLASSIFICATION:</strong>\n"
+    diagnosis_text += f"- <strong>Category:</strong> {category_display}\n"
+    diagnosis_text += f"- <strong>Analysis confidence:</strong> {confidence_display}\n"
+    diagnosis_text += f"- <strong>Urgency level:</strong> {urgency_level.upper()}\n\n"
+
+    # Conditions
+    diagnosis_text += f"{conditions_header}\n{confidence_note}\n"
+
     for i, condition in enumerate(possible_conditions[:3], 1):
-        diagnosis_text += f"**{i}. {condition['name']}** ({condition['probability']})\n"
+        if low_confidence and prob_ranges:
+            display_prob = prob_ranges[i - 1] if i <= len(prob_ranges) else "< 10%"
+            diagnosis_text += f"<strong>{i}. {condition['name']}</strong> (estimated range: {display_prob})\n"
+        else:
+            diagnosis_text += f"<strong>{i}. {condition['name']}</strong> ({condition['probability']})\n"
         diagnosis_text += f"   - {condition['description']}\n"
         if condition.get('indicators'):
             diagnosis_text += f"   - Indicators: {', '.join(condition['indicators'][:2])}\n"
         diagnosis_text += "\n"
-    
-    # Razonamiento del modelo
-    if reasoning and reasoning != "Analysis based on structured data":
-        diagnosis_text += f"**CLINICAL REASONING:**\n"
+
+    # Clinical reasoning (only show if meaningful and non-trivial)
+    if reasoning and reasoning not in ("Analysis based on structured data",) and not reasoning.startswith("Clasificación"):
+        diagnosis_text += "<strong>CLINICAL REASONING:</strong>\n"
         diagnosis_text += f"{reasoning}\n\n"
-    
-    # Recomendaciones
+
+    # Recommendations
     if recommendations:
-        diagnosis_text += f"**RECOMMENDATIONS:**\n"
+        diagnosis_text += "<strong>RECOMMENDATIONS:</strong>\n"
         for rec in recommendations[:4]:
             diagnosis_text += f"- {rec}\n"
         diagnosis_text += "\n"
-    
-    # Nivel de urgencia y siguientes pasos
-    diagnosis_text += f"**NEXT STEPS:**\n"
-    
+
+    # Next steps
+    diagnosis_text += "<strong>NEXT STEPS:</strong>\n"
     if urgency_level in ["critical", "high"]:
-        diagnosis_text += "- **CONSULT A DOCTOR IMMEDIATELY**\n"
+        diagnosis_text += "- <strong>CONSULT A DOCTOR IMMEDIATELY</strong>\n"
         diagnosis_text += "- Consider going to emergency care if symptoms worsen\n"
     elif urgency_level == "medium":
-        diagnosis_text += "- **Schedule a medical appointment in the next 2-3 days**\n"
+        diagnosis_text += "- <strong>Schedule a medical appointment in the next 2–3 days</strong>\n"
         diagnosis_text += "- Monitor how your symptoms evolve\n"
     else:
-        diagnosis_text += "- **Monitor symptoms and seek care if they worsen**\n"
+        diagnosis_text += "- <strong>Monitor symptoms and seek care if they worsen</strong>\n"
         diagnosis_text += "- Consider a routine medical consultation\n"
-    
+
     diagnosis_text += "\n"
-    
-    # Disclaimer médico
-    diagnosis_text += "**IMPORTANT:**\n"
-    diagnosis_text += "- This analysis is based on AI and structured data\n"
-    diagnosis_text += "- It does NOT replace professional medical diagnosis\n"
-    diagnosis_text += "- Always consult a doctor for a definitive diagnosis\n"
-    diagnosis_text += f"- Analysis processed with {structured_data.get('metadata', {}).get('processing_method', 'advanced method')}\n"
-    
+
+    # Disclaimer
+    diagnosis_text += "<strong>IMPORTANT DISCLAIMER:</strong>\n"
+    diagnosis_text += "- This analysis is based on AI and structured conversation data\n"
+    diagnosis_text += "- It does <strong>NOT</strong> replace professional medical diagnosis\n"
+    diagnosis_text += "- Always consult a doctor for a definitive diagnosis and treatment plan\n"
+
     return diagnosis_text
 
 
@@ -1535,24 +1689,24 @@ async def generate_conditions_from_structured_data(
     primary_category = classification_result.get("primary_category", "other")
     confidence = classification_result.get("confidence_score", 0.5)
     
-    # Todas las condiciones posibles organizadas por categoría
+    # Conditions by category — bilingual keywords (EN + ES)
     conditions_by_category = {
         "neurological": [
             {
                 "name": "Tension headache",
-                "keywords": ["dolor de cabeza", "cefalea", "tension"],
+                "keywords": ["tension headache", "headache", "head pain", "cefalea", "dolor de cabeza", "tension"],
                 "description": "Headache related to muscle tension or stress",
                 "base_probability": 0.75
             },
             {
                 "name": "Migraine",
-                "keywords": ["migraña", "jaqueca", "pulsante", "sensibilidad luz"],
-                "description": "Vascular headache with possible sensitivity",
+                "keywords": ["migraine", "photophobia", "phonophobia", "aura", "throbbing", "migraña", "jaqueca", "pulsante"],
+                "description": "Vascular headache with possible light/sound sensitivity",
                 "base_probability": 0.65
             },
             {
                 "name": "Dehydration headache",
-                "keywords": ["deshidratacion", "poco liquido"],
+                "keywords": ["dehydration", "headache", "deshidratacion", "poco liquido"],
                 "description": "Headache related to insufficient hydration",
                 "base_probability": 0.45
             }
@@ -1560,19 +1714,19 @@ async def generate_conditions_from_structured_data(
         "respiratory": [
             {
                 "name": "Upper respiratory infection",
-                "keywords": ["tos", "resfriado", "congestion", "garganta"],
+                "keywords": ["cough", "sore throat", "congestion", "runny nose", "tos", "resfriado", "garganta"],
                 "description": "Infection in the upper respiratory tract",
                 "base_probability": 0.70
             },
             {
                 "name": "Mild bronchitis",
-                "keywords": ["tos persistente", "flemas", "pecho"],
+                "keywords": ["persistent cough", "phlegm", "chest", "tos persistente", "flemas"],
                 "description": "Mild inflammation of the bronchi",
                 "base_probability": 0.55
             },
             {
                 "name": "Respiratory allergy",
-                "keywords": ["alergia", "estacional", "picazon"],
+                "keywords": ["allergy", "allergic", "seasonal", "sneezing", "alergia", "estacional"],
                 "description": "Allergic reaction in the respiratory tract",
                 "base_probability": 0.50
             }
@@ -1580,19 +1734,19 @@ async def generate_conditions_from_structured_data(
         "cardiovascular": [
             {
                 "name": "Benign tachycardia",
-                "keywords": ["palpitaciones", "corazon rapido", "latidos"],
+                "keywords": ["palpitations", "heart racing", "fast heartbeat", "palpitaciones", "corazon rapido"],
                 "description": "Non-pathological increase in heart rate",
                 "base_probability": 0.65
             },
             {
                 "name": "Cardiac anxiety",
-                "keywords": ["ansiedad", "estres", "nervios"],
+                "keywords": ["anxiety", "stress", "nervous", "ansiedad", "estres"],
                 "description": "Cardiac symptoms related to anxiety",
                 "base_probability": 0.60
             },
             {
                 "name": "Mild arrhythmia",
-                "keywords": ["irregular", "saltitos", "pausas"],
+                "keywords": ["irregular heartbeat", "irregular", "pauses", "skipping beats", "irregular"],
                 "description": "Mild alteration of heart rhythm",
                 "base_probability": 0.45
             }
@@ -1600,19 +1754,19 @@ async def generate_conditions_from_structured_data(
         "musculoskeletal": [
             {
                 "name": "Muscle pain",
-                "keywords": ["dolor muscular", "contractura", "tension"],
+                "keywords": ["muscle pain", "muscle ache", "muscle tension", "dolor muscular", "contractura"],
                 "description": "Muscle tension or fatigue",
                 "base_probability": 0.70
             },
             {
                 "name": "Mild arthritis",
-                "keywords": ["articular", "articulaciones", "rigidez"],
+                "keywords": ["joint pain", "joint ache", "joint", "arthritis", "articular", "articulaciones"],
                 "description": "Mild joint inflammation",
                 "base_probability": 0.55
             },
             {
                 "name": "Sports injury",
-                "keywords": ["ejercicio", "deporte", "sobreesfuerzo"],
+                "keywords": ["exercise", "sport", "overuse", "injury", "strain", "ejercicio", "deporte"],
                 "description": "Injury related to physical activity",
                 "base_probability": 0.50
             }
@@ -1620,19 +1774,19 @@ async def generate_conditions_from_structured_data(
         "gastrointestinal": [
             {
                 "name": "Gastritis",
-                "keywords": ["estomago", "acidez", "quemazón"],
+                "keywords": ["stomach", "heartburn", "acid", "burning", "estomago", "acidez"],
                 "description": "Inflammation of the gastric lining",
                 "base_probability": 0.65
             },
             {
                 "name": "Indigestion",
-                "keywords": ["digestion", "pesadez", "comida"],
+                "keywords": ["digestion", "bloating", "heavy", "food", "digestion", "pesadez"],
                 "description": "Difficulties in the digestive process",
                 "base_probability": 0.60
             },
             {
                 "name": "Intestinal syndrome",
-                "keywords": ["intestino", "diarrea", "estreñimiento"],
+                "keywords": ["bowel", "diarrhea", "constipation", "intestino", "diarrea"],
                 "description": "Alteration in intestinal function",
                 "base_probability": 0.50
             }
@@ -1643,19 +1797,19 @@ async def generate_conditions_from_structured_data(
     general_conditions = [
         {
             "name": "Mild viral syndrome",
-            "keywords": ["malestar", "cansancio", "fiebre"],
+            "keywords": ["fatigue", "fever", "malaise", "weakness", "malestar", "cansancio", "fiebre"],
             "description": "Low-intensity viral process",
             "base_probability": 0.60
         },
         {
             "name": "Fatigue or stress",
-            "keywords": ["cansancio", "estres", "agotamiento"],
+            "keywords": ["fatigue", "tired", "exhausted", "stress", "anxiety", "cansancio", "estres"],
             "description": "Symptoms related to tiredness or tension",
             "base_probability": 0.55
         },
         {
             "name": "General malaise",
-            "keywords": ["general", "inespecifico"],
+            "keywords": ["general", "unspecified", "evaluation", "inespecifico"],
             "description": "Nonspecific symptoms requiring evaluation",
             "base_probability": 0.45
         }
