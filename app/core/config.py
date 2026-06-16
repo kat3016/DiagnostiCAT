@@ -33,14 +33,6 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
     NVIDIA_BASE_URL: str = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
     NEMOTRON_MODEL: str = os.getenv("NEMOTRON_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
-    
-    # Configuración de modelo
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "nemotron")  # nemotron, openai, fallback
-    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
-    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1000"))
-
-    # CrewAI (opcional)
-    CREW_ENABLE: bool = os.getenv("CREW_ENABLE", "True").lower() == "true"
 
     # Seguridad
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")

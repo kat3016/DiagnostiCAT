@@ -10,11 +10,8 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.validators import get_configuration_status
 from app.routers import medical_chat
-# from app.routers import consent_anamnesis  # No existe
-# from app.routers import anamnesis_flow  # Comentado temporalmente por dependencia de crewai
-# from app.core.database import create_tables  # Comentado temporalmente
-# from app.core.validators import validate_llm_configuration, LLMConfigurationError, get_configuration_status  # Comentado temporalmente
 
 # Mangum solo necesario para AWS Lambda, comentado para desarrollo local
 try:
@@ -22,27 +19,23 @@ try:
     MANGUM_AVAILABLE = True
 except ImportError:
     MANGUM_AVAILABLE = False
-    print("⚠️ Mangum no disponible - solo necesario para AWS Lambda") 
+    print("⚠️ Mangum no disponible - solo necesario para AWS Lambda")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestión del ciclo de vida de la aplicación"""
-    # Validar configuración de LLM antes de iniciar (comentado temporalmente)
-    # try:
-    #     validate_llm_configuration()
-    #     print("✅ Configuración de LLM validada correctamente")
-    # except LLMConfigurationError as e:
-    #     print("❌ ERROR DE CONFIGURACIÓN:")
-    #     print(str(e))
-    #     print("\n🚨 DiagnostiCAT requiere modelos LLM reales configurados.")
-    #     print("   El servidor se iniciará pero fallará en las consultas médicas.")
-    
-    # Inicialización (comentado temporalmente)
-    # await create_tables()
+    status = get_configuration_status()
+    if status["valid"]:
+        print(f"✅ Configuración de LLM válida (proveedor: {status['provider']})")
+    else:
+        print("⚠️ Configuración de LLM incompleta — el sistema seguirá funcionando en modo")
+        print("   determinista basado en reglas clínicas, pero sin frases generadas por LLM.")
+        for error in status["errors"]:
+            print(f"   - {error}")
+
     print("🚀 DiagnostiCAT iniciado correctamente")
     yield
-    # Limpieza al cerrar
     print("👋 DiagnostiCAT cerrando...")
 
 
@@ -100,10 +93,13 @@ async def health_check():
 @app.get("/config/status")
 async def configuration_status():
     """Endpoint para verificar el estado de configuración de LLM"""
-    # status = get_configuration_status()  # Comentado temporalmente
+    status = get_configuration_status()
     return {
         "service": "DiagnostiCAT",
-        "llm_configuration": {"valid": True, "status": "basic_mode"},
+        "llm_configuration": status,
+        # The diagnosis pipeline is rule-based and deterministic regardless of
+        # LLM availability — an LLM, when configured, only improves question
+        # phrasing and adds an optional hypotheses narrative.
         "ready_for_medical_consultations": True
     }
 
@@ -114,18 +110,6 @@ app.include_router(
     prefix="/api/v1/chat",
     tags=["Conversación Médica"]
 )
-
-# app.include_router(
-#     consent_anamnesis.router,
-#     prefix="/api/v1",
-#     tags=["Consentimiento y Anamnesis (Legacy)"]
-# )
-
-# app.include_router(
-#     anamnesis_flow.router,
-#     prefix="/api/v1/flow",
-#     tags=["Flujo de Anamnesis Conversacional"]
-# )
 
 # Handler para AWS Lambda (solo si mangum está disponible)
 if MANGUM_AVAILABLE:

@@ -7,12 +7,9 @@ httpx
 python-dotenv
 sqlalchemy
 psycopg2-binary
-crewai
 aiosqlite
 langchain-openai
 transformers
 torch
 tokenizers
-numpy
-scikit-learn
 mangum

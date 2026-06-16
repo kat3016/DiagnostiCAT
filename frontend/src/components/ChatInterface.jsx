@@ -214,12 +214,34 @@ Have a good day.`,
 
   const getSeverityColor = (severity) => {
     const severityMap = {
-      'CRÍTICO': '#dc3545',
-      'ALTO': '#fd7e14',
-      'MEDIO': '#ffc107',
-      'BAJO': '#28a745'
+      'critical': '#dc3545',
+      'high': '#fd7e14',
+      'medium': '#ffc107',
+      'low': '#28a745'
     };
-    return severityMap[severity?.toUpperCase()] || '#6c757d';
+    return severityMap[severity?.toLowerCase()] || '#6c757d';
+  };
+
+  // Renders a line of backend-provided markdown-lite (**bold** / *italic*) as
+  // safe React text nodes — no HTML parsing, no injection risk, unlike the
+  // previous dangerouslySetInnerHTML approach.
+  const renderMarkdownLine = (line, key) => {
+    if (!line) return <div key={key} className="text-line">&nbsp;</div>;
+
+    const segments = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+    return (
+      <div key={key} className="text-line">
+        {segments.map((segment, i) => {
+          if (segment.startsWith('**') && segment.endsWith('**')) {
+            return <strong key={i}>{segment.slice(2, -2)}</strong>;
+          }
+          if (segment.startsWith('*') && segment.endsWith('*')) {
+            return <em key={i}>{segment.slice(1, -1)}</em>;
+          }
+          return <React.Fragment key={i}>{segment}</React.Fragment>;
+        })}
+      </div>
+    );
   };
 
   const formatTime = (timestamp) => {
@@ -238,13 +260,7 @@ Have a good day.`,
             <div className="message-bubble">
               <div className="message-text">
                 {message.role === 'assistant'
-                  ? message.content.split('\n').map((line, i) => (
-                      <div
-                        key={i}
-                        className="text-line"
-                        dangerouslySetInnerHTML={{ __html: line || '&nbsp;' }}
-                      />
-                    ))
+                  ? message.content.split('\n').map((line, i) => renderMarkdownLine(line, i))
                   : message.content.split('\n').map((line, i) => (
                       <div key={i} className="text-line">
                         {line || <br />}

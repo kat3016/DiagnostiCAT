@@ -10,14 +10,6 @@ const apiClient = axios.create({
   },
 });
 
-// Servicio para gestión de consentimiento
-export const consentService = {
-  async submitConsent(accepted) {
-    const response = await apiClient.post('/consent', { accepted });
-    return response.data;
-  },
-};
-
 // Servicio para chat médico
 export const chatService = {
   async sendMessage(message, conversationId = null, patientContext = null) {
@@ -47,31 +39,6 @@ export const chatService = {
   },
 };
 
-// Servicio para anamnesis
-export const anamnesisService = {
-  async getNextQuestion(conversationId) {
-    const response = await apiClient.get(`/anamnesis/next?conversation_id=${conversationId}`);
-    return response.data;
-  },
-
-  async submitAnswer(conversationId, key, value) {
-    const response = await apiClient.post('/anamnesis/answer', value, {
-      params: { conversation_id: conversationId, key },
-    });
-    return response.data;
-  },
-
-  async getStructured(conversationId) {
-    const response = await apiClient.get(`/anamnesis/structured?conversation_id=${conversationId}`);
-    return response.data;
-  },
-
-  async getSummary(conversationId) {
-    const response = await apiClient.get(`/anamnesis/summary?conversation_id=${conversationId}`);
-    return response.data;
-  },
-};
-
 // Interceptor para manejo de errores
 apiClient.interceptors.response.use(
   (response) => response,
@@ -93,7 +60,5 @@ apiClient.interceptors.response.use(
 );
 
 export default {
-  consentService,
   chatService,
-  anamnesisService,
 };
